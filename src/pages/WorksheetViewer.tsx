@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import {
   ArrowLeft, Download, FileText, FileDown, Eye, EyeOff,
-  Trash2, Printer,
+  Trash2, Printer, Share2,
 } from 'lucide-react';
 import type { Worksheet } from '../types';
 import { GRADE_LEVEL_LABELS } from '../types';
@@ -10,6 +10,7 @@ import MathRenderer from '../components/MathRenderer';
 import { exportWorksheetToPdf } from '../utils/exportPdf';
 import { exportWorksheetToWord } from '../utils/exportWord';
 import { deleteWorksheet } from '../utils/storage';
+import ShareModal from '../components/ShareModal';
 
 interface Props {
   worksheet: Worksheet;
@@ -22,6 +23,7 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
   const [showExport, setShowExport] = useState(false);
   const [includeAnswersInExport, setIncludeAnswersInExport] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
   const handleExportPdf = async () => {
@@ -88,6 +90,13 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
           >
             <Download className="w-4 h-4" />
             Xuất file
+          </button>
+          <button
+            onClick={() => setShowShare(true)}
+            className="btn-raised btn-raised-emerald flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-sm font-medium transition-all"
+          >
+            <Share2 className="w-4 h-4" />
+            Chia sẻ online
           </button>
           <button
             onClick={handleDelete}
@@ -193,6 +202,12 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
           </div>
         </div>
       )}
+
+      <ShareModal
+        worksheet={worksheet}
+        isOpen={showShare}
+        onClose={() => setShowShare(false)}
+      />
     </div>
   );
 }

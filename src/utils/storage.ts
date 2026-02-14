@@ -1,12 +1,14 @@
-import type { Worksheet, AppSettings } from '../types';
+import type { Worksheet, AppSettings, Subject } from '../types';
+import { DEFAULT_SUBJECTS } from '../types';
 
 const WORKSHEETS_KEY = 'edusheet_worksheets';
 const SETTINGS_KEY = 'edusheet_settings';
+const CUSTOM_SUBJECTS_KEY = 'edusheet_custom_subjects';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   geminiApiKey: '',
-  selectedModel: 'gemini-2.5-flash',
+  selectedModel: 'gemini-3-flash-preview',
   autoSave: true,
   defaultSchoolName: '',
   defaultClassName: '',
@@ -73,3 +75,33 @@ export function importData(jsonStr: string): boolean {
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
+
+// Custom Subjects
+export function getCustomSubjects(): Subject[] {
+  try {
+    const stored = localStorage.getItem(CUSTOM_SUBJECTS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function saveCustomSubject(subject: Subject): void {
+  const subjects = getCustomSubjects();
+  const index = subjects.findIndex(s => s.id === subject.id);
+  if (index >= 0) {
+    subjects[index] = subject;
+  } else {
+    subjects.push(subject);
+  }
+  localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(subjects));
+}
+
+export function deleteCustomSubject(id: string): void {
+  const subjects = getCustomSubjects().filter(s => s.id !== id);
+  localStorage.setItem(CUSTOM_SUBJECTS_KEY, JSON.stringify(subjects));
+}
+
+export function getAllSubjects(): Subject[] {
+  return [...DEFAULT_SUBJECTS, ...getCustomSubjects()];
+}
+

@@ -1,9 +1,9 @@
 import {
   LayoutDashboard, PlusCircle, Library, MessageSquare,
-  Download, Upload, X,
+  Download, Upload, X, BarChart3,
 } from 'lucide-react';
 
-export type Page = 'dashboard' | 'create' | 'library' | 'chat';
+export type Page = 'dashboard' | 'create' | 'library' | 'chat' | 'stats';
 
 interface SidebarProps {
   currentPage: Page;
@@ -18,6 +18,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
   { id: 'create', label: 'Tạo phiếu mới', icon: PlusCircle },
   { id: 'library', label: 'Thư viện', icon: Library },
+  { id: 'stats', label: 'Thống kê', icon: BarChart3 },
   { id: 'chat', label: 'Trợ lý AI', icon: MessageSquare },
 ];
 
@@ -43,8 +44,8 @@ export default function Sidebar({ currentPage, onNavigate, isOpen, onClose, onEx
                 key={item.id}
                 onClick={() => { onNavigate(item.id); onClose(); }}
                 className={`btn-raised w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${active
-                    ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25 btn-raised-teal'
-                    : 'text-slate-600 hover:bg-teal-50 hover:text-teal-700 btn-raised-white'
+                  ? 'bg-gradient-to-r from-teal-500 to-teal-600 text-white shadow-lg shadow-teal-500/25 btn-raised-teal'
+                  : 'text-slate-600 hover:bg-teal-50 hover:text-teal-700 btn-raised-white'
                   }`}
               >
                 <Icon className="w-5 h-5" />

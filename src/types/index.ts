@@ -52,6 +52,7 @@ export interface Worksheet {
   createdAt: string;
   updatedAt: string;
   tags?: string[];
+  language?: string;
 }
 
 export interface AnswerKeyItem {
@@ -81,9 +82,9 @@ export interface WorksheetGenerationRequest {
 }
 
 export const GEMINI_MODELS = [
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
 ];
 
 export interface QuestionTypeInfo {
@@ -242,4 +243,17 @@ export const DEFAULT_SUBJECTS: Subject[] = [
   { id: 'history', name: 'Lịch sử', icon: 'Landmark', color: '#f59e0b', questionsCount: 0 },
   { id: 'geography', name: 'Địa lý', icon: 'MapPin', color: '#06b6d4', questionsCount: 0 },
   { id: 'informatics', name: 'Tin học', icon: 'Monitor', color: '#6366f1', questionsCount: 0 },
+];
+
+export const LANGUAGES = [
+  { id: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
+  { id: 'en', label: 'English', flag: '🇺🇸' },
+  { id: 'fr', label: 'Français', flag: '🇫🇷' },
+];
+
+export const SUBJECT_ICON_OPTIONS = [
+  'Calculator', 'Atom', 'FlaskConical', 'Leaf', 'BookOpen',
+  'Globe', 'Landmark', 'MapPin', 'Monitor', 'Music',
+  'Palette', 'Heart', 'Dumbbell', 'Scale', 'Lightbulb',
+  'Microscope', 'Wrench', 'GraduationCap', 'Building', 'Star',
 ];

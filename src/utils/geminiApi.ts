@@ -4,7 +4,7 @@ import { getSettings } from './storage';
 
 const MODEL_IDS = GEMINI_MODELS.map(m => m.id);
 
-async function callGemini(prompt: string, modelIndex = 0): Promise<string | null> {
+async function callGemini(prompt: string, modelIndex = 0, forceJson = false): Promise<string | null> {
   const settings = getSettings();
   const apiKey = settings.geminiApiKey;
 
@@ -16,6 +16,11 @@ async function callGemini(prompt: string, modelIndex = 0): Promise<string | null
     ? settings.selectedModel
     : MODEL_IDS[Math.min(modelIndex, MODEL_IDS.length - 1)];
 
+  const generationConfig: Record<string, unknown> = { temperature: 0.7, maxOutputTokens: 8192 };
+  if (forceJson) {
+    generationConfig.responseMimeType = 'application/json';
+  }
+
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
@@ -24,13 +29,13 @@ async function callGemini(prompt: string, modelIndex = 0): Promise<string | null
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+          generationConfig,
         }),
       }
     );
 
     if (response.status === 429 && modelIndex < MODEL_IDS.length - 1) {
-      return callGemini(prompt, modelIndex + 1);
+      return callGemini(prompt, modelIndex + 1, forceJson);
     }
 
     if (response.status === 400 || response.status === 403) {
@@ -45,7 +50,7 @@ async function callGemini(prompt: string, modelIndex = 0): Promise<string | null
     return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   } catch (error) {
     if (modelIndex < MODEL_IDS.length - 1 && error instanceof TypeError) {
-      return callGemini(prompt, modelIndex + 1);
+      return callGemini(prompt, modelIndex + 1, forceJson);
     }
     throw error;
   }
@@ -98,7 +103,7 @@ CHẾ ĐỘ TẠO BÀI: ${contentModeInstruction}
 
 Yêu cầu:
 - Độ khó: ${diffLabel}
-- Ngôn ngữ: Tiếng Việt (có dấu đầy đủ)
+- Ngôn ngữ: ${request.language === 'en' ? 'English' : request.language === 'fr' ? 'Français' : 'Tiếng Việt (có dấu đầy đủ)'}
 - Mỗi câu hỏi phải rõ ràng, chính xác
 - Với trắc nghiệm: 4 lựa chọn, chỉ 1 đáp án đúng
 - Với điền khuyết: dùng dấu "___" cho chỗ trống
@@ -131,36 +136,67 @@ Trả về JSON THUẦN (không markdown, không code block) với format:
 Lưu ý: Chỉ trả về mảng JSON. Trường matchingPairs chỉ cần với loại matching/card_match. Trường options chỉ cần với loại multiple_choice và true_false.`;
 }
 
+function extractJsonArray(text: string): unknown[] | null {
+  // Try direct parse first
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+  } catch { /* continue */ }
+
+  // Remove markdown code blocks
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/, '').replace(/\n?\s*```\s*$/, '');
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* continue */ }
+  }
+
+  // Try to find JSON array in text using bracket matching
+  const startIdx = cleaned.indexOf('[');
+  if (startIdx !== -1) {
+    let depth = 0;
+    for (let i = startIdx; i < cleaned.length; i++) {
+      if (cleaned[i] === '[') depth++;
+      else if (cleaned[i] === ']') depth--;
+      if (depth === 0) {
+        try {
+          const parsed = JSON.parse(cleaned.substring(startIdx, i + 1));
+          if (Array.isArray(parsed)) return parsed;
+        } catch { /* continue */ }
+        break;
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function generateWorksheetQuestions(
   request: WorksheetGenerationRequest
 ): Promise<Question[]> {
   const prompt = buildWorksheetPrompt(request);
-  const result = await callGemini(prompt);
+  const result = await callGemini(prompt, 0, true);
 
   if (!result) throw new Error('Không nhận được kết quả từ AI');
 
-  try {
-    let cleaned = result.trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    }
-
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) throw new Error('Invalid format');
-
-    return parsed.map((q: Record<string, unknown>, i: number) => ({
-      id: `q_${Date.now()}_${i}`,
-      content: String(q.content || ''),
-      type: (q.type as QuestionType) || request.questionTypes[0],
-      options: Array.isArray(q.options) ? q.options.map(String) : undefined,
-      correctAnswer: String(q.correctAnswer || ''),
-      explanation: q.explanation ? String(q.explanation) : undefined,
-      difficulty: (q.difficulty as Question['difficulty']) || request.difficulty,
-      matchingPairs: Array.isArray(q.matchingPairs) ? q.matchingPairs : undefined,
-    }));
-  } catch {
+  const parsed = extractJsonArray(result);
+  if (!parsed || parsed.length === 0) {
+    console.error('AI response cannot be parsed:', result.substring(0, 500));
     throw new Error('Không thể phân tích kết quả AI. Vui lòng thử lại!');
   }
+
+  return (parsed as Record<string, unknown>[]).map((q, i) => ({
+    id: `q_${Date.now()}_${i}`,
+    content: String(q.content || ''),
+    type: (q.type as QuestionType) || request.questionTypes[0],
+    options: Array.isArray(q.options) ? (q.options as unknown[]).map(String) : undefined,
+    correctAnswer: String(q.correctAnswer || ''),
+    explanation: q.explanation ? String(q.explanation) : undefined,
+    difficulty: (q.difficulty as Question['difficulty']) || request.difficulty,
+    matchingPairs: Array.isArray(q.matchingPairs) ? q.matchingPairs as { left: string; right: string }[] : undefined,
+  }));
 }
 
 export async function analyzeContentForTypes(
@@ -206,4 +242,47 @@ export async function chatWithAI(message: string): Promise<string> {
   const result = await callGemini(prompt);
   if (!result) throw new Error('Không nhận được phản hồi từ AI');
   return result;
+}
+
+export async function analyzeImage(base64Data: string, mimeType: string): Promise<string> {
+  const settings = getSettings();
+  const apiKey = settings.geminiApiKey;
+  if (!apiKey) throw new Error('Vui lòng nhập API Key trong phần Cài đặt!');
+
+  const modelId = settings.selectedModel || 'gemini-2.0-flash';
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+            {
+              text: 'Hãy nhận dạng và trích xuất TOÀN BỘ nội dung văn bản từ ảnh tài liệu/sách giáo khoa này. Giữ nguyên cấu trúc, tiêu đề, đoạn văn, công thức toán (dùng LaTeX). Trả về văn bản thuần, không cần mô tả hình ảnh.',
+            },
+          ],
+        }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('API quá tải, vui lòng thử lại sau ít giây.');
+    if (response.status === 400 || response.status === 403) throw new Error('API Key không hợp lệ hoặc model không hỗ trợ Vision.');
+    throw new Error(`Lỗi API: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Không nhận dạng được nội dung từ ảnh.');
+  return text;
 }

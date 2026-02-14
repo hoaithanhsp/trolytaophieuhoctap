@@ -7,6 +7,8 @@ import WorksheetCreator from './pages/WorksheetCreator';
 import WorksheetViewer from './pages/WorksheetViewer';
 import WorksheetLibrary from './pages/WorksheetLibrary';
 import AIChatPage from './pages/AIChatPage';
+import StatsPage from './pages/StatsPage';
+import OnlineWorksheet from './pages/OnlineWorksheet';
 import type { Page } from './components/Sidebar';
 import type { Worksheet } from './types';
 import { getWorksheets, getSettings, exportAllData, importData, saveWorksheet } from './utils/storage';
@@ -19,6 +21,7 @@ export default function App() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [viewingWorksheet, setViewingWorksheet] = useState<Worksheet | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [onlineData, setOnlineData] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
   const refreshData = useCallback(() => {
@@ -28,6 +31,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Check for online worksheet in hash
+    const hash = window.location.hash;
+    if (hash.startsWith('#/online/')) {
+      setOnlineData(hash.replace('#/online/', ''));
+      return;
+    }
     const ws = getWorksheets();
     if (ws.length === 0) {
       SAMPLE_WORKSHEETS.forEach(s => saveWorksheet(s));
@@ -114,10 +123,17 @@ export default function App() {
         );
       case 'chat':
         return <AIChatPage />;
+      case 'stats':
+        return <StatsPage worksheets={worksheets} />;
       default:
         return null;
     }
   };
+
+  // Online worksheet mode: fullscreen, no sidebar/header
+  if (onlineData) {
+    return <OnlineWorksheet encodedData={onlineData} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50/30 via-white to-emerald-50/20">
