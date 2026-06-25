@@ -2,58 +2,270 @@ import { GEMINI_MODELS, QUESTION_TYPES_DATA } from '../types';
 import type { WorksheetGenerationRequest, Question, QuestionType, ContentMode } from '../types';
 import { getSettings } from './storage';
 
+const INTERACTIONS_API_URL = 'https://generativelanguage.googleapis.com/v1/interactions';
 const MODEL_IDS = GEMINI_MODELS.map(m => m.id);
 
-async function callGemini(prompt: string, modelIndex = 0, forceJson = false): Promise<string | null> {
+export const GOOGLE_AI_API_KEY_PATTERN = /^(?:AIzaSy|AQ)\S{8,}$/;
+
+export function isValidGoogleAiApiKey(apiKey: string): boolean {
+  return GOOGLE_AI_API_KEY_PATTERN.test(apiKey.trim());
+}
+
+type GeminiApiErrorType =
+  | 'INVALID_API_KEY'
+  | 'QUOTA_EXCEEDED'
+  | 'MODEL_OVERLOADED'
+  | 'MODEL_UNAVAILABLE'
+  | 'UNKNOWN';
+
+type GeminiInputPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mime_type: string };
+
+type GeminiInput = string | GeminiInputPart[];
+type GeminiGenerationConfig = Record<string, string | number | boolean>;
+type GeminiResponseFormat = { type: 'text'; mime_type: 'application/json' };
+
+class GeminiApiError extends Error {
+  constructor(
+    message: string,
+    readonly type: GeminiApiErrorType,
+    readonly status?: number,
+    readonly model?: string
+  ) {
+    super(message);
+    this.name = 'GeminiApiError';
+  }
+}
+
+function parseApiError(status?: number, responseBody = '', error?: unknown): GeminiApiErrorType {
+  const errorMessage = error instanceof Error ? error.message : String(error ?? '');
+  const serialized = `${status ?? ''} ${responseBody} ${errorMessage}`.toLowerCase();
+
+  if (status === 429 || serialized.includes('resource_exhausted') || serialized.includes('quota')) {
+    return 'QUOTA_EXCEEDED';
+  }
+
+  if (
+    status === 503 ||
+    serialized.includes('unavailable') ||
+    serialized.includes('high demand') ||
+    serialized.includes('overloaded') ||
+    serialized.includes('try again later')
+  ) {
+    return 'MODEL_OVERLOADED';
+  }
+
+  if (
+    serialized.includes('api_key_invalid') ||
+    serialized.includes('api key not valid') ||
+    serialized.includes('invalid api key') ||
+    serialized.includes('permission_denied') ||
+    status === 401 ||
+    (status === 403 && serialized.includes('permission'))
+  ) {
+    return 'INVALID_API_KEY';
+  }
+
+  if (
+    status === 404 ||
+    serialized.includes('not found') ||
+    serialized.includes('not supported') ||
+    serialized.includes('deprecated') ||
+    serialized.includes('shut down')
+  ) {
+    return 'MODEL_UNAVAILABLE';
+  }
+
+  return 'UNKNOWN';
+}
+
+function getFriendlyErrorMessage(type: GeminiApiErrorType, status?: number): string {
+  switch (type) {
+    case 'INVALID_API_KEY':
+      return 'API Key không hợp lệ. Ứng dụng hỗ trợ key bắt đầu bằng AIzaSy hoặc AQ.';
+    case 'QUOTA_EXCEEDED':
+      return 'API Key đã hết quota hoặc đang bị giới hạn tốc độ. Hãy thử model nhẹ hơn, chờ quota phục hồi hoặc dùng key khác từ Google AI Studio.';
+    case 'MODEL_OVERLOADED':
+      return 'Model Gemini đang quá tải tạm thời. Ứng dụng đã thử các model dự phòng, vui lòng thử lại sau ít phút.';
+    case 'MODEL_UNAVAILABLE':
+      return 'Model Gemini đang chọn không khả dụng hoặc đã ngừng hỗ trợ. Hãy chọn model mới trong phần Cài đặt.';
+    default:
+      return `Lỗi Gemini API${status ? `: ${status}` : ''}. Vui lòng thử lại.`;
+  }
+}
+
+function getOrderedModels(selectedModel?: string): string[] {
+  const trimmed = selectedModel?.trim();
+  const ordered = trimmed ? [trimmed, ...MODEL_IDS] : [...MODEL_IDS];
+  return Array.from(new Set(ordered.filter(Boolean)));
+}
+
+function getTextParts(content: unknown): string[] {
+  if (typeof content === 'string') return [content];
+  if (!Array.isArray(content)) return [];
+
+  return content.flatMap(part => {
+    if (typeof part === 'string') return [part];
+    if (part && typeof part === 'object') {
+      const record = part as Record<string, unknown>;
+      if (typeof record.text === 'string') return [record.text];
+    }
+    return [];
+  });
+}
+
+function extractInteractionText(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+
+  const record = data as Record<string, unknown>;
+  if (typeof record.output_text === 'string') return record.output_text;
+
+  const steps = Array.isArray(record.steps) ? record.steps : [];
+  const stepText = steps.flatMap(step => {
+    if (!step || typeof step !== 'object') return [];
+    return getTextParts((step as Record<string, unknown>).content);
+  }).join('');
+  if (stepText) return stepText;
+
+  const outputs = Array.isArray(record.outputs) ? record.outputs : [];
+  const outputText = outputs.flatMap(output => {
+    if (!output || typeof output !== 'object') return [];
+    const outputRecord = output as Record<string, unknown>;
+    if (typeof outputRecord.text === 'string') return [outputRecord.text];
+    return getTextParts(outputRecord.content);
+  }).join('');
+  if (outputText) return outputText;
+
+  const candidates = Array.isArray(record.candidates) ? record.candidates : [];
+  const candidateText = candidates.flatMap(candidate => {
+    if (!candidate || typeof candidate !== 'object') return [];
+    const content = (candidate as Record<string, unknown>).content;
+    if (!content || typeof content !== 'object') return [];
+    return getTextParts((content as Record<string, unknown>).parts);
+  }).join('');
+
+  return candidateText || null;
+}
+
+async function createInteraction(
+  apiKey: string,
+  model: string,
+  input: GeminiInput,
+  generationConfig: GeminiGenerationConfig,
+  responseFormat?: GeminiResponseFormat
+): Promise<string> {
+  const response = await fetch(INTERACTIONS_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      model,
+      input,
+      store: false,
+      generation_config: generationConfig,
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    }),
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    const errorType = parseApiError(response.status, responseText);
+    throw new GeminiApiError(
+      getFriendlyErrorMessage(errorType, response.status),
+      errorType,
+      response.status,
+      model
+    );
+  }
+
+  const data = responseText ? JSON.parse(responseText) : {};
+  const text = extractInteractionText(data);
+  if (text === null) {
+    throw new GeminiApiError('Không nhận được phản hồi văn bản từ Gemini.', 'UNKNOWN', response.status, model);
+  }
+
+  return text;
+}
+
+async function callGeminiInput({
+  input,
+  apiKey,
+  selectedModel,
+  generationConfig,
+  responseFormat,
+}: {
+  input: GeminiInput;
+  apiKey: string;
+  selectedModel?: string;
+  generationConfig: GeminiGenerationConfig;
+  responseFormat?: GeminiResponseFormat;
+}): Promise<string | null> {
+  const models = getOrderedModels(selectedModel);
+  let lastError: GeminiApiError | null = null;
+
+  for (const [index, model] of models.entries()) {
+    try {
+      return await createInteraction(apiKey, model, input, generationConfig, responseFormat);
+    } catch (error) {
+      const errorType = error instanceof GeminiApiError
+        ? error.type
+        : parseApiError(undefined, '', error);
+
+      if (errorType === 'INVALID_API_KEY') {
+        throw error instanceof Error ? error : new Error(getFriendlyErrorMessage(errorType));
+      }
+
+      lastError = error instanceof GeminiApiError
+        ? error
+        : new GeminiApiError(getFriendlyErrorMessage(errorType), errorType, undefined, model);
+
+      const nextModel = models[index + 1];
+      if (nextModel) {
+        console.warn(`Gemini model ${model} failed with ${errorType}; trying ${nextModel}.`);
+      }
+    }
+  }
+
+  throw lastError || new Error('Không thể kết nối Gemini API. Vui lòng thử lại.');
+}
+
+async function callGemini(prompt: string, forceJson = false): Promise<string | null> {
   const settings = getSettings();
-  const apiKey = settings.geminiApiKey;
+  const apiKey = settings.geminiApiKey.trim();
 
   if (!apiKey) {
     throw new Error('Vui lòng nhập API Key trong phần Cài đặt!');
   }
 
-  const modelId = modelIndex === 0
-    ? settings.selectedModel
-    : MODEL_IDS[Math.min(modelIndex, MODEL_IDS.length - 1)];
-
-  const generationConfig: Record<string, unknown> = { temperature: 0.7, maxOutputTokens: 8192 };
-  if (forceJson) {
-    generationConfig.responseMimeType = 'application/json';
+  if (!isValidGoogleAiApiKey(apiKey)) {
+    throw new Error('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
   }
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig,
-        }),
-      }
-    );
+  return callGeminiInput({
+    input: prompt,
+    apiKey,
+    selectedModel: settings.selectedModel,
+    generationConfig: { temperature: 0.7, max_output_tokens: 8192 },
+    responseFormat: forceJson ? { type: 'text', mime_type: 'application/json' } : undefined,
+  });
+}
 
-    if (response.status === 429 && modelIndex < MODEL_IDS.length - 1) {
-      return callGemini(prompt, modelIndex + 1, forceJson);
-    }
+export async function testGeminiApiConnection(apiKey: string, selectedModel?: string): Promise<void> {
+  const trimmedKey = apiKey.trim();
 
-    if (response.status === 400 || response.status === 403) {
-      throw new Error('API Key không hợp lệ. Vui lòng kiểm tra lại!');
-    }
-
-    if (!response.ok) {
-      throw new Error(`Lỗi API: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  } catch (error) {
-    if (modelIndex < MODEL_IDS.length - 1 && error instanceof TypeError) {
-      return callGemini(prompt, modelIndex + 1, forceJson);
-    }
-    throw error;
+  if (!isValidGoogleAiApiKey(trimmedKey)) {
+    throw new Error('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
   }
+
+  await callGeminiInput({
+    input: 'Say "OK" in one word.',
+    apiKey: trimmedKey,
+    selectedModel,
+    generationConfig: { temperature: 0, max_output_tokens: 10 },
+  });
 }
 
 function getContentModeInstruction(mode: ContentMode): string {
@@ -177,7 +389,7 @@ export async function generateWorksheetQuestions(
   request: WorksheetGenerationRequest
 ): Promise<Question[]> {
   const prompt = buildWorksheetPrompt(request);
-  const result = await callGemini(prompt, 0, true);
+  const result = await callGemini(prompt, true);
 
   if (!result) throw new Error('Không nhận được kết quả từ AI');
 
@@ -246,43 +458,30 @@ export async function chatWithAI(message: string): Promise<string> {
 
 export async function analyzeImage(base64Data: string, mimeType: string): Promise<string> {
   const settings = getSettings();
-  const apiKey = settings.geminiApiKey;
+  const apiKey = settings.geminiApiKey.trim();
   if (!apiKey) throw new Error('Vui lòng nhập API Key trong phần Cài đặt!');
 
-  const modelId = settings.selectedModel || 'gemini-2.0-flash';
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
-            {
-              text: 'Hãy nhận dạng và trích xuất TOÀN BỘ nội dung văn bản từ ảnh tài liệu/sách giáo khoa này. Giữ nguyên cấu trúc, tiêu đề, đoạn văn, công thức toán (dùng LaTeX). Trả về văn bản thuần, không cần mô tả hình ảnh.',
-            },
-          ],
-        }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    if (response.status === 429) throw new Error('API quá tải, vui lòng thử lại sau ít giây.');
-    if (response.status === 400 || response.status === 403) throw new Error('API Key không hợp lệ hoặc model không hỗ trợ Vision.');
-    throw new Error(`Lỗi API: ${response.status}`);
+  if (!isValidGoogleAiApiKey(apiKey)) {
+    throw new Error('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
   }
 
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = await callGeminiInput({
+    apiKey,
+    selectedModel: settings.selectedModel,
+    input: [
+      {
+        type: 'text',
+        text: 'Hãy nhận dạng và trích xuất TOÀN BỘ nội dung văn bản từ ảnh tài liệu/sách giáo khoa này. Giữ nguyên cấu trúc, tiêu đề, đoạn văn, công thức toán (dùng LaTeX). Trả về văn bản thuần, không cần mô tả hình ảnh.',
+      },
+      {
+        type: 'image',
+        data: base64Data,
+        mime_type: mimeType,
+      },
+    ],
+    generationConfig: { temperature: 0.2, max_output_tokens: 8192 },
+  });
+
   if (!text) throw new Error('Không nhận dạng được nội dung từ ảnh.');
   return text;
 }

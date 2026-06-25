@@ -28,16 +28,26 @@ export default function Header({ onOpenSettings, onToggleSidebar, hasApiKey }: H
           </div>
         </div>
 
-        <button
-          onClick={onOpenSettings}
-          className={`btn-raised flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasApiKey
-              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 btn-raised-emerald'
-              : 'bg-amber-50 text-amber-700 hover:bg-amber-100 animate-pulse'
-            }`}
-        >
-          <Settings className="w-4 h-4" />
-          <span className="hidden sm:inline">{hasApiKey ? 'API Key đã cấu hình' : 'Nhập API Key'}</span>
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={onOpenSettings}
+            className={`btn-raised flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${hasApiKey
+                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 btn-raised-emerald'
+                : 'bg-amber-50 text-amber-700 hover:bg-amber-100 animate-pulse'
+              }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline">{hasApiKey ? 'API Key đã cấu hình' : 'Nhập API Key'}</span>
+          </button>
+          <a
+            href="https://aistudio.google.com/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:inline text-[11px] font-semibold leading-none text-red-500 hover:text-red-600"
+          >
+            Lấy API key để sử dụng app
+          </a>
+        </div>
       </div>
     </header>
   );

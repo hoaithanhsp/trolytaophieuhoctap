@@ -1,14 +1,16 @@
 import type { Worksheet, AppSettings, Subject } from '../types';
-import { DEFAULT_SUBJECTS } from '../types';
+import { DEFAULT_SUBJECTS, GEMINI_MODELS } from '../types';
 
 const WORKSHEETS_KEY = 'edusheet_worksheets';
 const SETTINGS_KEY = 'edusheet_settings';
 const CUSTOM_SUBJECTS_KEY = 'edusheet_custom_subjects';
+const DEFAULT_MODEL_ID = GEMINI_MODELS[0].id;
+const MODEL_IDS = new Set(GEMINI_MODELS.map(model => model.id));
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   geminiApiKey: '',
-  selectedModel: 'gemini-3-flash-preview',
+  selectedModel: DEFAULT_MODEL_ID,
   autoSave: true,
   defaultSchoolName: '',
   defaultClassName: '',
@@ -17,7 +19,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 export function getSettings(): AppSettings {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
-    if (stored) return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+    if (stored) {
+      const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      return MODEL_IDS.has(settings.selectedModel)
+        ? settings
+        : { ...settings, selectedModel: DEFAULT_MODEL_ID };
+    }
   } catch { /* ignore */ }
   return DEFAULT_SETTINGS;
 }
@@ -104,4 +111,3 @@ export function deleteCustomSubject(id: string): void {
 export function getAllSubjects(): Subject[] {
   return [...DEFAULT_SUBJECTS, ...getCustomSubjects()];
 }
-

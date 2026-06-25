@@ -3,6 +3,7 @@ import { X, Eye, EyeOff, Key, ExternalLink, CheckCircle } from 'lucide-react';
 import { GEMINI_MODELS } from '../types';
 import type { AppSettings } from '../types';
 import { getSettings, saveSettings } from '../utils/storage';
+import { isValidGoogleAiApiKey, testGeminiApiConnection } from '../utils/geminiApi';
 
 interface Props {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export default function ApiKeyModal({ isOpen, onClose, onSave }: Props) {
   const [settings, setLocalSettings] = useState<AppSettings>(getSettings());
   const [showKey, setShowKey] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
 
   useEffect(() => {
     if (isOpen) setLocalSettings(getSettings());
@@ -22,29 +24,30 @@ export default function ApiKeyModal({ isOpen, onClose, onSave }: Props) {
   if (!isOpen) return null;
 
   const handleSave = () => {
-    saveSettings(settings);
+    saveSettings({ ...settings, geminiApiKey: settings.geminiApiKey.trim() });
     onSave();
     onClose();
   };
 
   const testApiKey = async () => {
     if (!settings.geminiApiKey) return;
-    setTestStatus('testing');
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${settings.selectedModel}:generateContent?key=${settings.geminiApiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: 'Say "OK" in one word.' }] }],
-            generationConfig: { maxOutputTokens: 10 },
-          }),
-        }
-      );
-      setTestStatus(res.ok ? 'success' : 'error');
-    } catch {
+    const apiKey = settings.geminiApiKey.trim();
+
+    if (!isValidGoogleAiApiKey(apiKey)) {
       setTestStatus('error');
+      setTestMessage('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
+      return;
+    }
+
+    setTestStatus('testing');
+    setTestMessage('');
+    try {
+      await testGeminiApiConnection(apiKey, settings.selectedModel);
+      setTestStatus('success');
+      setTestMessage('Kết nối thành công với Gemini Interactions API.');
+    } catch (error) {
+      setTestStatus('error');
+      setTestMessage(error instanceof Error ? error.message : 'Không thể kiểm tra API Key.');
     }
   };
 
@@ -73,8 +76,12 @@ export default function ApiKeyModal({ isOpen, onClose, onSave }: Props) {
               <input
                 type={showKey ? 'text' : 'password'}
                 value={settings.geminiApiKey}
-                onChange={e => setLocalSettings(s => ({ ...s, geminiApiKey: e.target.value }))}
-                placeholder="AIza..."
+                onChange={e => {
+                  setLocalSettings(s => ({ ...s, geminiApiKey: e.target.value }));
+                  setTestStatus('idle');
+                  setTestMessage('');
+                }}
+                placeholder="AIzaSy... hoặc AQ..."
                 className="w-full px-4 py-3 pr-20 rounded-xl border border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm transition-all"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
@@ -87,7 +94,7 @@ export default function ApiKeyModal({ isOpen, onClose, onSave }: Props) {
               </div>
             </div>
             <a
-              href="https://aistudio.google.com/apikey"
+              href="https://aistudio.google.com/api-keys"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-teal-500 hover:text-teal-600 mt-2"
@@ -142,7 +149,10 @@ export default function ApiKeyModal({ isOpen, onClose, onSave }: Props) {
               {testStatus === 'testing' ? 'Đang kiểm tra...' : testStatus === 'success' ? 'Kết nối thành công!' : 'Kiểm tra kết nối'}
             </button>
             {testStatus === 'error' && (
-              <span className="text-xs text-red-500">API Key không hợp lệ</span>
+              <span className="text-xs text-red-500">{testMessage || 'Không thể kết nối Gemini API'}</span>
+            )}
+            {testStatus === 'success' && testMessage && (
+              <span className="text-xs text-emerald-600">{testMessage}</span>
             )}
           </div>
         </div>
