@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI } from '@google/genai/web';
 import { QUESTION_TYPES_DATA } from '../types';
 import type { AiProvider, WorksheetGenerationRequest, Question, QuestionType, ContentMode } from '../types';
 import { getSettings, getActiveApiKey, getProvider } from './storage';
