@@ -12,7 +12,7 @@ import {
   GRADE_LEVEL_LABELS, CONTENT_MODE_LABELS, CONTENT_MODE_DESCRIPTIONS, LANGUAGES,
 } from '../types';
 import { generateWorksheetQuestions, analyzeContentForTypes, analyzeImage } from '../utils/geminiApi';
-import { generateId, getSettings, saveWorksheet, getAllSubjects } from '../utils/storage';
+import { generateId, getSettings, saveWorksheet, getAllSubjects, getActiveApiKey } from '../utils/storage';
 import { parseUploadedFile, getAcceptedFileTypes, getFileTypeLabel } from '../utils/fileParser';
 import QuestionCard from '../components/QuestionCard';
 import QuestionEditor from '../components/QuestionEditor';
@@ -140,7 +140,7 @@ export default function WorksheetCreator({ onCreated }: Props) {
       setError('Vui lòng nhập nội dung trước khi phân tích!');
       return;
     }
-    if (!settings.geminiApiKey) {
+    if (!getActiveApiKey()) {
       setError('Vui lòng nhập API Key trong phần Cài đặt!');
       return;
     }
@@ -161,7 +161,7 @@ export default function WorksheetCreator({ onCreated }: Props) {
       setError('Vui lòng nhập nội dung bài giảng hoặc chủ đề!');
       return;
     }
-    if (!settings.geminiApiKey) {
+    if (!getActiveApiKey()) {
       setError('Vui lòng nhập API Key trong phần Cài đặt!');
       return;
     }
@@ -194,7 +194,7 @@ export default function WorksheetCreator({ onCreated }: Props) {
       setError(err instanceof Error ? err.message : 'Có lỗi xảy ra');
       setStep('configure');
     }
-  }, [rawContent, subjectId, questionTypes, questionCount, difficulty, gradeLevel, contentMode, settings.geminiApiKey, title]);
+  }, [rawContent, subjectId, questionTypes, questionCount, difficulty, gradeLevel, contentMode, title]);
 
   const handleSave = () => {
     const sub = getAllSubjects().find(s => s.id === subjectId);

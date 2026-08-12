@@ -1,29 +1,67 @@
-import type { Worksheet, AppSettings, Subject } from '../types';
-import { DEFAULT_SUBJECTS, GEMINI_MODELS } from '../types';
+import type { Worksheet, AppSettings, Subject, AiProvider } from '../types';
+import { DEFAULT_SUBJECTS, GEMINI_MODELS, AGENT_PLATFORM_MODELS } from '../types';
 
 const WORKSHEETS_KEY = 'edusheet_worksheets';
 const SETTINGS_KEY = 'edusheet_settings';
 const CUSTOM_SUBJECTS_KEY = 'edusheet_custom_subjects';
-const DEFAULT_MODEL_ID = GEMINI_MODELS[0].id;
-const MODEL_IDS = new Set(GEMINI_MODELS.map(model => model.id));
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   geminiApiKey: '',
-  selectedModel: DEFAULT_MODEL_ID,
+  gemini_api_key: '',
+  agent_platform_api_key: '',
+  google_ai_provider: 'gemini',
+  google_ai_provider_selection_source: 'manual',
+  selectedModel: GEMINI_MODELS[0].id,
   autoSave: true,
   defaultSchoolName: '',
   defaultClassName: '',
 };
 
+export function getProvider(settings?: AppSettings): AiProvider {
+  const provider = settings?.google_ai_provider;
+  if ((provider as string) === 'vertex') return 'gemini';
+  return provider === 'agent-platform' ? 'agent-platform' : 'gemini';
+}
+
+export function getActiveApiKey(settings?: AppSettings): string {
+  const s = settings || getSettings();
+  const provider = getProvider(s);
+  if (provider === 'agent-platform') {
+    return s.agent_platform_api_key || '';
+  }
+  return s.gemini_api_key || s.geminiApiKey || '';
+}
+
 export function getSettings(): AppSettings {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
     if (stored) {
-      const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
-      return MODEL_IDS.has(settings.selectedModel)
-        ? settings
-        : { ...settings, selectedModel: DEFAULT_MODEL_ID };
+      const parsed = JSON.parse(stored);
+      const settings: AppSettings = { ...DEFAULT_SETTINGS, ...parsed };
+      
+      // Normalize legacy provider 'vertex' to 'gemini'
+      if ((settings.google_ai_provider as string) === 'vertex') {
+        settings.google_ai_provider = 'gemini';
+      }
+
+      // Sync legacy geminiApiKey and gemini_api_key
+      if (settings.gemini_api_key && !settings.geminiApiKey) {
+        settings.geminiApiKey = settings.gemini_api_key;
+      } else if (settings.geminiApiKey && !settings.gemini_api_key) {
+        settings.gemini_api_key = settings.geminiApiKey;
+      }
+
+      const provider = getProvider(settings);
+      const validModels = provider === 'agent-platform'
+        ? AGENT_PLATFORM_MODELS.map(m => m.id)
+        : GEMINI_MODELS.map(m => m.id);
+
+      if (!validModels.includes(settings.selectedModel)) {
+        settings.selectedModel = validModels[0];
+      }
+
+      return settings;
     }
   } catch { /* ignore */ }
   return DEFAULT_SETTINGS;
@@ -32,6 +70,13 @@ export function getSettings(): AppSettings {
 export function saveSettings(settings: Partial<AppSettings>): AppSettings {
   const current = getSettings();
   const updated = { ...current, ...settings };
+  
+  if (updated.gemini_api_key && !updated.geminiApiKey) {
+    updated.geminiApiKey = updated.gemini_api_key;
+  } else if (updated.geminiApiKey && !updated.gemini_api_key) {
+    updated.gemini_api_key = updated.geminiApiKey;
+  }
+
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
   return updated;
 }

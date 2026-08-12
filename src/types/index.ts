@@ -61,9 +61,15 @@ export interface AnswerKeyItem {
   explanation?: string;
 }
 
+export type AiProvider = 'gemini' | 'agent-platform';
+
 export interface AppSettings {
   theme: 'light' | 'dark';
   geminiApiKey: string;
+  gemini_api_key?: string;
+  agent_platform_api_key?: string;
+  google_ai_provider?: AiProvider;
+  google_ai_provider_selection_source?: 'manual';
   selectedModel: string;
   autoSave: boolean;
   defaultSchoolName: string;
@@ -82,12 +88,20 @@ export interface WorksheetGenerationRequest {
 }
 
 export const GEMINI_MODELS = [
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Mặc định)' },
   { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
   { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
+];
+
+export const AGENT_PLATFORM_MODELS = [
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Mặc định)' },
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
 ];
 
 export interface QuestionTypeInfo {

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { chatWithAI } from '../utils/geminiApi';
-import { getSettings } from '../utils/storage';
+import { getSettings, getActiveApiKey } from '../utils/storage';
 import MathRenderer from '../components/MathRenderer';
 
 interface Message {
@@ -32,8 +32,7 @@ export default function AIChatPage() {
     const msg = text || input.trim();
     if (!msg) return;
 
-    const settings = getSettings();
-    if (!settings.geminiApiKey) {
+    if (!getActiveApiKey()) {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',

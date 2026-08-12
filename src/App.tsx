@@ -11,7 +11,7 @@ import StatsPage from './pages/StatsPage';
 import OnlineWorksheet from './pages/OnlineWorksheet';
 import type { Page } from './components/Sidebar';
 import type { Worksheet } from './types';
-import { getWorksheets, getSettings, exportAllData, importData, saveWorksheet } from './utils/storage';
+import { getWorksheets, getSettings, exportAllData, importData, saveWorksheet, getActiveApiKey } from './utils/storage';
 import { SAMPLE_WORKSHEETS } from './utils/sampleData';
 
 export default function App() {
@@ -27,7 +27,7 @@ export default function App() {
   const refreshData = useCallback(() => {
     const ws = getWorksheets();
     setWorksheets(ws);
-    setHasApiKey(!!getSettings().geminiApiKey);
+    setHasApiKey(!!getActiveApiKey());
   }, []);
 
   useEffect(() => {
