@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { chatWithAI } from '../utils/geminiApi';
-import { getSettings, getActiveApiKey } from '../utils/storage';
+import { getActiveApiKey } from '../utils/storage';
 import MathRenderer from '../components/MathRenderer';
 
 interface Message {
