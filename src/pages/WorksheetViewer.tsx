@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import {
   ArrowLeft, Download, FileText, FileDown, Eye, EyeOff,
-  Trash2, Printer, Share2,
+  Trash2, Printer, Share2, Globe,
 } from 'lucide-react';
 import type { Worksheet } from '../types';
 import { GRADE_LEVEL_LABELS } from '../types';
@@ -9,6 +9,7 @@ import QuestionCard from '../components/QuestionCard';
 import MathRenderer from '../components/MathRenderer';
 import { exportWorksheetToPdf } from '../utils/exportPdf';
 import { exportWorksheetToWord } from '../utils/exportWord';
+import { exportWorksheetToHtml } from '../utils/exportHtml';
 import { deleteWorksheet } from '../utils/storage';
 import ShareModal from '../components/ShareModal';
 
@@ -121,7 +122,7 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
             <span className="text-sm text-slate-600">Kèm theo đáp án</span>
           </label>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <button
               onClick={handleExportPdf}
               disabled={exporting}
@@ -137,6 +138,14 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
             >
               <FileText className="w-5 h-5" />
               Xuất Word
+            </button>
+            <button
+              onClick={() => exportWorksheetToHtml(worksheet)}
+              disabled={exporting}
+              className="btn-raised btn-raised-emerald flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-50 text-amber-600 font-medium text-sm hover:bg-amber-100 transition-colors disabled:opacity-50"
+            >
+              <Globe className="w-5 h-5" />
+              Xuất HTML tương tác
             </button>
           </div>
         </div>

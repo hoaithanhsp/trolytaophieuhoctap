@@ -8,42 +8,95 @@ export async function exportWorksheetToPdf(
   includeAnswers: boolean,
   printElement?: HTMLElement | null
 ): Promise<void> {
-  // Strategy: If printElement is available and has MathJax rendered content,
-  // use html2canvas to capture it. Otherwise, generate text-based PDF.
-
+  // Strategy 1: If printElement is provided, capture it directly via html2canvas
   if (printElement) {
     try {
-      await renderHtmlToPdf(worksheet, printElement);
+      await renderHtmlToPdf(worksheet, printElement, includeAnswers);
       return;
     } catch {
-      // Fallback to text-based PDF
+      // Fallback to Strategy 2
     }
   }
 
-  await generateTextPdf(worksheet, includeAnswers);
+  // Strategy 2: Build a temporary hidden DOM element with full Vietnamese support,
+  // render it via html2canvas, then generate PDF from the image.
+  await renderFromBuiltHtml(worksheet, includeAnswers);
 }
 
 async function renderHtmlToPdf(
   worksheet: Worksheet,
-  element: HTMLElement
+  element: HTMLElement,
+  includeAnswers: boolean
 ): Promise<void> {
   // Wait for MathJax to finish rendering
   if (window.MathJax?.typesetPromise) {
     await window.MathJax.typesetPromise([element]);
   }
 
+  // If includeAnswers, clone the element and append answers section
+  let targetElement = element;
+  let clonedContainer: HTMLDivElement | null = null;
+
+  if (includeAnswers && worksheet.answerKey?.length) {
+    clonedContainer = document.createElement('div');
+    clonedContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;padding:0;';
+    clonedContainer.innerHTML = element.innerHTML;
+
+    // Append answer key section
+    const answerHtml = buildAnswerKeyHtml(worksheet);
+    clonedContainer.insertAdjacentHTML('beforeend', answerHtml);
+
+    document.body.appendChild(clonedContainer);
+    targetElement = clonedContainer;
+
+    // Allow layout to settle
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  try {
+    await captureAndSavePdf(targetElement, worksheet);
+  } finally {
+    if (clonedContainer) {
+      document.body.removeChild(clonedContainer);
+    }
+  }
+}
+
+async function renderFromBuiltHtml(worksheet: Worksheet, includeAnswers: boolean): Promise<void> {
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;padding:40px;font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1e293b;line-height:1.6;';
+
+  // Build complete HTML content with Vietnamese support
+  container.innerHTML = buildWorksheetHtml(worksheet, includeAnswers);
+
+  document.body.appendChild(container);
+
+  // Wait for layout
+  await new Promise(r => setTimeout(r, 300));
+
+  try {
+    await captureAndSavePdf(container, worksheet);
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+async function captureAndSavePdf(element: HTMLElement, worksheet: Worksheet): Promise<void> {
   const canvas = await html2canvas(element, {
     scale: 2,
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff',
+    width: element.scrollWidth,
+    height: element.scrollHeight,
+    windowWidth: element.scrollWidth,
   });
 
   const imgData = canvas.toDataURL('image/png');
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 10; // mm
+  const margin = 8; // mm
 
   const usableWidth = pageWidth - 2 * margin;
   const imgWidth = canvas.width;
@@ -79,194 +132,13 @@ async function renderHtmlToPdf(
   pdf.save(fileName);
 }
 
-async function generateTextPdf(worksheet: Worksheet, includeAnswers: boolean): Promise<void> {
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const margin = 15;
-  const contentWidth = pageWidth - 2 * margin;
-  let yPos = margin;
-
-  // Use a font that supports Vietnamese
-  pdf.setFont('helvetica');
-
-  const addText = (text: string, x: number, y: number, size: number, style: 'normal' | 'bold' = 'normal', maxWidth?: number) => {
-    pdf.setFontSize(size);
-    pdf.setFont('helvetica', style);
-    if (maxWidth) {
-      const lines = pdf.splitTextToSize(text, maxWidth);
-      pdf.text(lines, x, y);
-      return lines.length * size * 0.4;
-    }
-    pdf.text(text, x, y);
-    return size * 0.4;
-  };
-
-  const checkPageBreak = (neededHeight: number) => {
-    if (yPos + neededHeight > pdf.internal.pageSize.getHeight() - margin) {
-      pdf.addPage();
-      yPos = margin;
-    }
-  };
-
-  // Title section
-  if (worksheet.schoolName) {
-    yPos += addText(worksheet.schoolName, pageWidth / 2, yPos, 9, 'normal', contentWidth);
-    pdf.setFontSize(9);
-    const schoolWidth = pdf.getTextWidth(worksheet.schoolName);
-    pdf.text(worksheet.schoolName, (pageWidth - schoolWidth) / 2, yPos - 2);
-    yPos += 3;
-  }
-
-  yPos += 2;
-  addText('PHIEU HOC TAP', pageWidth / 2, yPos, 16, 'bold');
-  pdf.setFontSize(16);
-  const titleWidth = pdf.getTextWidth('PHIEU HOC TAP');
-  pdf.text('PHIEU HOC TAP', (pageWidth - titleWidth) / 2, yPos);
-  yPos += 8;
-
-  addText(worksheet.title, pageWidth / 2, yPos, 12, 'bold');
-  pdf.setFontSize(12);
-  const subTitleWidth = pdf.getTextWidth(worksheet.title);
-  pdf.text(worksheet.title, (pageWidth - subTitleWidth) / 2, yPos);
-  yPos += 5;
-
-  const info = `Mon: ${worksheet.subjectName} | Cap: ${GRADE_LEVEL_LABELS[worksheet.gradeLevel]} | ${worksheet.questions.length} cau`;
-  pdf.setFontSize(9);
-  pdf.setTextColor(120, 120, 120);
-  const infoWidth = pdf.getTextWidth(info);
-  pdf.text(info, (pageWidth - infoWidth) / 2, yPos);
-  pdf.setTextColor(0, 0, 0);
-  yPos += 8;
-
-  // Divider
-  pdf.setDrawColor(200, 200, 200);
-  pdf.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 6;
-
-  // Questions
-  worksheet.questions.forEach((q, i) => {
-    checkPageBreak(30);
-
-    // Strip LaTeX delimiters for text PDF
-    const cleanContent = stripLatex(q.content);
-
-    const typeLabel = QUESTION_TYPE_LABELS[q.type];
-    const diffLabel = DIFFICULTY_LABELS[q.difficulty];
-
-    pdf.setFontSize(8);
-    pdf.setTextColor(100, 100, 100);
-    pdf.text(`[${typeLabel}] [${diffLabel}]`, margin, yPos);
-    yPos += 4;
-
-    pdf.setFontSize(11);
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFont('helvetica', 'bold');
-    const qLines = pdf.splitTextToSize(`Cau ${i + 1}: ${cleanContent}`, contentWidth);
-    pdf.text(qLines, margin, yPos);
-    yPos += qLines.length * 5 + 2;
-    pdf.setFont('helvetica', 'normal');
-
-    if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
-      q.options.forEach((opt, j) => {
-        checkPageBreak(6);
-        const label = String.fromCharCode(65 + j);
-        pdf.setFontSize(10);
-        pdf.text(`  ${label}. ${stripLatex(opt)}`, margin + 4, yPos);
-        yPos += 5;
-      });
-    }
-
-    if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
-      q.matchingPairs.forEach((pair, j) => {
-        checkPageBreak(6);
-        pdf.setFontSize(10);
-        pdf.text(`  ${j + 1}. ${stripLatex(pair.left)}  →  ${String.fromCharCode(97 + j)}. ${stripLatex(pair.right)}`, margin + 4, yPos);
-        yPos += 5;
-      });
-    }
-
-    if (q.type === 'true_false' && q.options) {
-      pdf.setFontSize(10);
-      pdf.text(`  ${q.options.join(' / ')}`, margin + 4, yPos);
-      yPos += 5;
-    }
-
-    if (q.type === 'fill_blank') {
-      pdf.setFontSize(9);
-      pdf.setTextColor(120, 120, 120);
-      pdf.text('  [Cho trong de hoc sinh dien vao]', margin + 4, yPos);
-      pdf.setTextColor(0, 0, 0);
-      yPos += 5;
-    }
-
-    if (q.type === 'coloring') {
-      pdf.setFontSize(9);
-      pdf.setTextColor(120, 120, 120);
-      pdf.text('  [Be hay dung but sap mau to that dep theo yeu cau]', margin + 4, yPos);
-      pdf.setTextColor(0, 0, 0);
-      yPos += 5;
-    }
-
-    if (q.type === 'dot_to_dot') {
-      pdf.setFontSize(9);
-      pdf.setTextColor(120, 120, 120);
-      pdf.text('  [Be hay noi cac diem theo thu tu so 1 -> 2 -> 3...]', margin + 4, yPos);
-      pdf.setTextColor(0, 0, 0);
-      yPos += 5;
-    }
-
-    if (q.type === 'maze') {
-      pdf.setFontSize(9);
-      pdf.setTextColor(120, 120, 120);
-      pdf.text('  [Be hay ve duong di vuot qua me cung]', margin + 4, yPos);
-      pdf.setTextColor(0, 0, 0);
-      yPos += 5;
-    }
-
-    if (q.type === 'tracing') {
-      pdf.setFontSize(9);
-      pdf.setTextColor(120, 120, 120);
-      pdf.text('  [Be hay cam but do theo dung cac net dut]', margin + 4, yPos);
-      pdf.setTextColor(0, 0, 0);
-      yPos += 5;
-    }
-
-    yPos += 4;
-  });
-
-  // Answer key
-  if (includeAnswers) {
-    checkPageBreak(20);
-    yPos += 4;
-    pdf.setDrawColor(200, 200, 200);
-    pdf.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 6;
-
-    pdf.setFontSize(13);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('BANG DAP AN', margin, yPos);
-    yPos += 7;
-    pdf.setFont('helvetica', 'normal');
-
-    worksheet.answerKey.forEach(ak => {
-      checkPageBreak(10);
-      pdf.setFontSize(10);
-      pdf.text(`Cau ${ak.questionIndex}: ${stripLatex(ak.answer)}`, margin, yPos);
-      yPos += 4;
-      if (ak.explanation) {
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 100, 100);
-        const expLines = pdf.splitTextToSize(`  ${stripLatex(ak.explanation)}`, contentWidth - 10);
-        pdf.text(expLines, margin + 5, yPos);
-        yPos += expLines.length * 3 + 2;
-        pdf.setTextColor(0, 0, 0);
-      }
-      yPos += 2;
-    });
-  }
-
-  const fileName = `${worksheet.title.replace(/[^a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF ]/g, '_')}.pdf`;
-  pdf.save(fileName);
+function escHtml(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function stripLatex(text: string): string {
@@ -275,7 +147,7 @@ function stripLatex(text: string): string {
     .replace(/\$\$(.*?)\$\$/g, '$1')
     .replace(/\$(.*?)\$/g, '$1')
     .replace(/\\frac\{(.*?)\}\{(.*?)\}/g, '($1/$2)')
-    .replace(/\\sqrt\{(.*?)\}/g, 'sqrt($1)')
+    .replace(/\\sqrt\{(.*?)\}/g, '√($1)')
     .replace(/\\times/g, '×')
     .replace(/\\div/g, '÷')
     .replace(/\\pm/g, '±')
@@ -287,6 +159,119 @@ function stripLatex(text: string): string {
     .replace(/_(\{.*?\}|\w)/g, (_, p) => `_${p.replace(/[{}]/g, '')}`)
     .replace(/\\\\/g, '')
     .replace(/\\[a-zA-Z]+/g, '');
+}
+
+function buildWorksheetHtml(worksheet: Worksheet, includeAnswers: boolean): string {
+  const headerStyle = 'text-align:center;margin-bottom:4px;';
+  const titleStyle = 'text-align:center;font-size:22px;font-weight:700;color:#0d9488;margin:8px 0 4px;letter-spacing:1px;';
+  const subTitleStyle = 'text-align:center;font-size:16px;font-weight:600;color:#334155;margin:4px 0;';
+  const infoStyle = 'text-align:center;font-size:12px;color:#94a3b8;margin-bottom:16px;';
+  const dividerStyle = 'border:none;border-top:1px solid #e2e8f0;margin:12px 0;';
+  const qBlockStyle = 'margin-bottom:16px;padding:10px 14px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;';
+  const qLabelStyle = 'font-size:11px;color:#94a3b8;margin-bottom:4px;';
+  const qContentStyle = 'font-size:14px;font-weight:600;color:#1e293b;margin-bottom:6px;line-height:1.6;';
+  const optionStyle = 'font-size:13px;color:#334155;padding:3px 0 3px 12px;';
+  const hintStyle = 'font-size:12px;color:#94a3b8;font-style:italic;padding:4px 0 0 12px;';
+
+  let html = '';
+
+  // Header
+  if (worksheet.schoolName) {
+    html += `<p style="${headerStyle}font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:2px;">${escHtml(worksheet.schoolName)}</p>`;
+  }
+  if (worksheet.className) {
+    html += `<p style="${headerStyle}font-size:12px;color:#94a3b8;">${escHtml(worksheet.className)}</p>`;
+  }
+
+  html += `<h1 style="${titleStyle}">PHIẾU HỌC TẬP</h1>`;
+  html += `<h2 style="${subTitleStyle}">${escHtml(worksheet.title)}</h2>`;
+  html += `<p style="${infoStyle}">Môn: ${escHtml(worksheet.subjectName)} &nbsp;|&nbsp; Cấp: ${escHtml(GRADE_LEVEL_LABELS[worksheet.gradeLevel])} &nbsp;|&nbsp; ${worksheet.questions.length} câu</p>`;
+  html += `<hr style="${dividerStyle}" />`;
+
+  // Questions
+  worksheet.questions.forEach((q, i) => {
+    const typeLabel = QUESTION_TYPE_LABELS[q.type] || q.type;
+    const diffLabel = DIFFICULTY_LABELS[q.difficulty] || q.difficulty;
+    const cleanContent = stripLatex(q.content);
+
+    html += `<div style="${qBlockStyle}">`;
+    html += `<div style="${qLabelStyle}">[${escHtml(typeLabel)}] [${escHtml(diffLabel)}]</div>`;
+    html += `<div style="${qContentStyle}">Câu ${i + 1}: ${escHtml(cleanContent)}</div>`;
+
+    // Options (multiple_choice, counting, circle_odd, pattern_sequence, true_false)
+    if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
+      q.options.forEach((opt, j) => {
+        const label = String.fromCharCode(65 + j);
+        html += `<div style="${optionStyle}">${label}. ${escHtml(stripLatex(opt))}</div>`;
+      });
+    }
+
+    if (q.type === 'true_false' && q.options) {
+      html += `<div style="${optionStyle}">${q.options.map(o => escHtml(o)).join(' / ')}</div>`;
+    }
+
+    // Matching pairs (matching, shadow_match, card_match)
+    if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
+      html += '<div style="padding-left:12px;margin-top:4px;">';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+      q.matchingPairs.forEach((pair, j) => {
+        html += `<tr>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${j + 1}. ${escHtml(stripLatex(pair.left))}</td>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;text-align:center;width:10%;">→</td>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${String.fromCharCode(97 + j)}. ${escHtml(stripLatex(pair.right))}</td>
+        </tr>`;
+      });
+      html += '</table></div>';
+    }
+
+    // Fill blank hint
+    if (q.type === 'fill_blank') {
+      html += `<div style="${hintStyle}">[Chỗ trống để học sinh điền vào]</div>`;
+    }
+
+    // Preschool activity hints
+    if (q.type === 'coloring') {
+      html += `<div style="${hintStyle}">🎨 [Bé hãy dùng bút sáp màu tô thật đẹp theo yêu cầu]</div>`;
+    }
+    if (q.type === 'dot_to_dot') {
+      html += `<div style="${hintStyle}">✏️ [Bé hãy nối các điểm theo thứ tự số 1 → 2 → 3...]</div>`;
+    }
+    if (q.type === 'maze') {
+      html += `<div style="${hintStyle}">🌀 [Bé hãy vẽ đường đi vượt qua mê cung]</div>`;
+    }
+    if (q.type === 'tracing') {
+      html += `<div style="${hintStyle}">✍️ [Bé hãy cầm bút đồ theo đúng các nét đứt]</div>`;
+    }
+
+    html += '</div>';
+  });
+
+  // Answer key
+  if (includeAnswers && worksheet.answerKey?.length) {
+    html += buildAnswerKeyHtml(worksheet);
+  }
+
+  return html;
+}
+
+function buildAnswerKeyHtml(worksheet: Worksheet): string {
+  const answerTitleStyle = 'font-size:17px;font-weight:700;color:#059669;margin:20px 0 12px;padding-top:16px;border-top:2px solid #d1fae5;';
+  const answerRowStyle = 'margin-bottom:8px;padding:8px 12px;background:#ecfdf5;border-radius:8px;';
+  const answerTextStyle = 'font-size:13px;font-weight:600;color:#065f46;';
+  const explanationStyle = 'font-size:11px;color:#6ee7b7;margin-top:2px;';
+
+  let html = `<div style="${answerTitleStyle}">📝 BẢNG ĐÁP ÁN</div>`;
+
+  worksheet.answerKey.forEach(ak => {
+    html += `<div style="${answerRowStyle}">`;
+    html += `<div style="${answerTextStyle}">Câu ${ak.questionIndex}: ${escHtml(stripLatex(ak.answer))}</div>`;
+    if (ak.explanation) {
+      html += `<div style="${explanationStyle}">→ ${escHtml(stripLatex(ak.explanation))}</div>`;
+    }
+    html += '</div>';
+  });
+
+  return html;
 }
 
 declare global {
