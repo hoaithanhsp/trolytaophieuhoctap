@@ -75,7 +75,76 @@ const sampleEnglishQuestions: Question[] = [
   },
 ];
 
+const samplePreschoolQuestions: Question[] = [
+  {
+    id: 'demo_pre_1',
+    content: 'Bé hãy đếm xem có bao nhiêu chú thỏ đáng yêu dưới đây: 🐰 🐰 🐰 🐰 🐰',
+    type: 'counting',
+    options: ['3', '4', '5', '6'],
+    correctAnswer: '5',
+    explanation: 'Có tất cả 5 chú thỏ 🐰 xinh xắn.',
+    difficulty: 'easy',
+  },
+  {
+    id: 'demo_pre_2',
+    content: 'Bé hãy tìm xem bạn nào KHÔNG PHẢI là con vật sống dưới nước?',
+    type: 'circle_odd',
+    options: ['🐟 Cá heo', '🐙 Bạch tuộc', '🦀 Cua biển', '🐱 Mèo con'],
+    correctAnswer: '🐱 Mèo con',
+    explanation: 'Mèo con 🐱 là động vật sống trên cạn, còn cá, bạch tuộc, cua sống dưới nước.',
+    difficulty: 'easy',
+  },
+  {
+    id: 'demo_pre_3',
+    content: 'Bé hãy nối mỗi con vật với bóng hoặc thức ăn yêu thích tương ứng nhé:',
+    type: 'shadow_match',
+    correctAnswer: 'Thỏ con - Củ cà rốt, Khỉ con - Quả chuối, Mèo con - Con cá, Chú chó - Khúc xương',
+    matchingPairs: [
+      { left: '🐰 Chú thỏ', right: '🥕 Củ cà rốt' },
+      { left: '🐵 Chú khỉ', right: '🍌 Quả chuối' },
+      { left: '🐱 Bé mèo', right: '🐟 Con cá' },
+      { left: '🐶 Cún con', right: '🦴 Khúc xương' },
+    ],
+    difficulty: 'easy',
+  },
+  {
+    id: 'demo_pre_4',
+    content: 'Bé hãy quan sát và chọn quả tiếp theo cho dãy quy luật sau: 🍎 🍌 🍎 🍌 🍎 ___ ?',
+    type: 'pattern_sequence',
+    options: ['🍎 Quả táo', '🍌 Quả chuối', '🍇 Quả nho', '🍉 Quả dưa hấu'],
+    correctAnswer: '🍌 Quả chuối',
+    explanation: 'Quy luật lặp lại là Táo rồi đến Chuối (🍎 → 🍌 → 🍎 → 🍌 → 🍎 → 🍌).',
+    difficulty: 'easy',
+  },
+  {
+    id: 'demo_pre_5',
+    content: 'Bé hãy tô màu ĐỎ cho quả cà chua 🍅, màu VÀNG cho quả chuối 🍌 và màu XANH LÁ cho quả dưa hấu 🍉 nhé!',
+    type: 'coloring',
+    correctAnswer: 'Cà chua tô màu Đỏ, Chuối tô màu Vàng, Dưa hấu tô màu Xanh lá',
+    explanation: 'Bé tô màu thật khéo léo không bị lem ra ngoài viền nhé!',
+    difficulty: 'easy',
+  },
+];
+
 export const SAMPLE_WORKSHEETS: Worksheet[] = [
+  {
+    id: 'sample_preschool',
+    title: 'Bé Vui Học Mầm Non - Nhận Biết Số Lượng & Thế Giới Động Vật',
+    subjectId: 'preschool_math',
+    subjectName: 'Làm quen với Toán (Mầm non)',
+    gradeLevel: 'preschool',
+    className: 'Lớp Lá 1 (5 tuổi)',
+    schoolName: 'Trường Mầm non Hoa Sen',
+    questions: samplePreschoolQuestions,
+    answerKey: samplePreschoolQuestions.map((q, i) => ({
+      questionIndex: i + 1,
+      answer: q.correctAnswer,
+      explanation: q.explanation,
+    })),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    tags: ['mầm-non', 'tập-đếm', 'động-vật', 'quy-luật'],
+  },
   {
     id: 'sample_1',
     title: 'Ôn tập Toán lớp 5 - Phép tính và Hình học',

@@ -70,22 +70,8 @@ export default function OnlineWorksheet({ encodedData }: Props) {
         }));
     }, [data]);
 
-    if (!data || questions.length === 0) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-teal-50/30 via-white to-emerald-50/20 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl border border-slate-200/60 p-12 text-center max-w-md">
-                    <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-4">
-                        <XCircle className="w-8 h-8 text-red-400" />
-                    </div>
-                    <h2 className="text-xl font-bold text-slate-800">Link không hợp lệ</h2>
-                    <p className="text-slate-400 text-sm mt-2">Link bài tập đã hết hạn hoặc bị lỗi. Vui lòng liên hệ giáo viên để lấy link mới.</p>
-                </div>
-            </div>
-        );
-    }
-
     const autoGradable = (type: QuestionType) =>
-        ['multiple_choice', 'true_false', 'fill_blank'].includes(type);
+        ['multiple_choice', 'true_false', 'fill_blank', 'counting', 'circle_odd', 'pattern_sequence'].includes(type);
 
     const results = useMemo(() => {
         if (!submitted) return null;
@@ -101,7 +87,7 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                 if (q.type === 'fill_blank') {
                     isCorrect = userAnswer.toLowerCase() === q.correctAnswer.toLowerCase();
                 } else {
-                    isCorrect = userAnswer === q.correctAnswer;
+                    isCorrect = userAnswer === q.correctAnswer || userAnswer.startsWith(q.correctAnswer);
                 }
                 if (isCorrect) correct++;
             }
@@ -109,8 +95,23 @@ export default function OnlineWorksheet({ encodedData }: Props) {
             return { question: q, userAnswer, isCorrect, isGradable };
         });
 
-        return { correct, total, details, percentage: total > 0 ? Math.round((correct / total) * 100) : 0 };
+        const score = total > 0 ? Math.round((correct / total) * 100) / 10 : 0;
+        return { correct, total, score, details, percentage: total > 0 ? Math.round((correct / total) * 100) : 0 };
     }, [submitted, questions, answers]);
+
+    if (!data || questions.length === 0) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-teal-50/30 via-white to-emerald-50/20 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl border border-slate-200/60 p-12 text-center max-w-md">
+                    <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-4">
+                        <XCircle className="w-8 h-8 text-red-400" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800">Link không hợp lệ</h2>
+                    <p className="text-slate-400 text-sm mt-2">Link bài tập đã hết hạn hoặc bị lỗi. Vui lòng liên hệ giáo viên để lấy link mới.</p>
+                </div>
+            </div>
+        );
+    }
 
     const handleSubmit = () => {
         if (window.confirm('Bạn có chắc muốn nộp bài? Không thể thay đổi sau khi nộp.')) {
@@ -221,21 +222,21 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                     <MathRenderer content={q.content} />
                                 </div>
 
-                                {/* Multiple choice */}
-                                {q.type === 'multiple_choice' && q.options && (
+                                {/* Multiple choice, counting, circle_odd, pattern_sequence */}
+                                {['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         {q.options.map((opt, j) => {
                                             const label = String.fromCharCode(65 + j);
                                             const isSelected = answers[q.id] === opt;
-                                            const isCorrectAnswer = submitted && opt === q.correctAnswer;
-                                            const isWrong = submitted && isSelected && opt !== q.correctAnswer;
+                                            const isCorrectAnswer = submitted && (opt === q.correctAnswer || opt.startsWith(q.correctAnswer));
+                                            const isWrong = submitted && isSelected && !isCorrectAnswer;
 
                                             return (
                                                 <button
                                                     key={j}
                                                     onClick={() => !submitted && setAnswers(p => ({ ...p, [q.id]: opt }))}
                                                     disabled={submitted}
-                                                    className={`px-3 py-2 rounded-xl text-sm text-left border transition-all ${isCorrectAnswer ? 'border-emerald-400 bg-emerald-50 text-emerald-800' :
+                                                    className={`px-3 py-2 rounded-xl text-sm text-left border transition-all ${isCorrectAnswer ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-medium' :
                                                             isWrong ? 'border-red-300 bg-red-50 text-red-700' :
                                                                 isSelected ? 'border-teal-400 bg-teal-50 text-teal-700' :
                                                                     'border-slate-100 bg-slate-50/50 text-slate-600 hover:border-teal-200 hover:bg-teal-50/30'
@@ -292,7 +293,7 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                 )}
 
                                 {/* Short answer / other types */}
-                                {!['multiple_choice', 'true_false', 'fill_blank', 'matching'].includes(q.type) && (
+                                {!['multiple_choice', 'true_false', 'fill_blank', 'matching', 'shadow_match', 'card_match', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && (
                                     <textarea
                                         value={answers[q.id] || ''}
                                         onChange={e => !submitted && setAnswers(p => ({ ...p, [q.id]: e.target.value }))}
@@ -303,8 +304,8 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                     />
                                 )}
 
-                                {/* Matching */}
-                                {q.type === 'matching' && q.matchingPairs && (
+                                {/* Matching, shadow_match, card_match */}
+                                {['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs && (
                                     <div className="space-y-2">
                                         {q.matchingPairs.map((pair, j) => (
                                             <div key={j} className="flex items-center gap-2">

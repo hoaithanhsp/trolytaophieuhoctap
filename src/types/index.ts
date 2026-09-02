@@ -1,4 +1,5 @@
 export type QuestionType =
+  // Dạng bài phổ thông & nâng cao
   | 'multiple_choice'
   | 'fill_blank'
   | 'matching'
@@ -13,10 +14,19 @@ export type QuestionType =
   | 'extended_writing'
   | 'mini_project'
   | 'card_match'
-  | 'self_assess';
+  | 'self_assess'
+  // Dạng bài đặc thù cho Mầm non
+  | 'coloring'
+  | 'circle_odd'
+  | 'shadow_match'
+  | 'counting'
+  | 'dot_to_dot'
+  | 'maze'
+  | 'pattern_sequence'
+  | 'tracing';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type GradeLevel = 'primary' | 'secondary' | 'high_school';
+export type GradeLevel = 'preschool' | 'primary' | 'secondary' | 'high_school';
 export type ContentMode = 'exact' | 'change_context' | 'change_numbers' | 'change_both';
 
 export interface Subject {
@@ -104,21 +114,92 @@ export const AGENT_PLATFORM_MODELS = [
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
 ];
 
+export type QuestionCategory = 'preschool' | 'standard' | 'advanced';
+
 export interface QuestionTypeInfo {
   id: QuestionType;
   label: string;
   emoji: string;
   description: string;
   detail: string;
+  category: QuestionCategory;
 }
 
 export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
+  // --- Dành cho Mầm non (3 - 6 tuổi) ---
+  {
+    id: 'coloring',
+    label: 'Tô màu theo yêu cầu',
+    emoji: '🎨',
+    description: 'Tô màu đồ vật/con vật theo số lượng hoặc chỉ dẫn',
+    detail: 'Phát triển kỹ năng vận động tinh, nhận biết màu sắc, con số, hình khối và làm quen với thẩm mỹ.',
+    category: 'preschool',
+  },
+  {
+    id: 'circle_odd',
+    label: 'Khoanh đối tượng khác biệt',
+    emoji: '⭕',
+    description: 'Tìm và khoanh tròn hình khác biệt nhất trong nhóm',
+    detail: 'Rèn luyện khả năng quan sát, tư duy so sánh và phân loại đồ vật, con vật, cây cối.',
+    category: 'preschool',
+  },
+  {
+    id: 'shadow_match',
+    label: 'Nối bóng / Nối hình tương ứng',
+    emoji: '👥',
+    description: 'Nối hình con vật/đồ vật với bóng hoặc đối tượng đi kèm',
+    detail: 'Phát triển thị giác không gian, tư duy liên tưởng hình dạng (mẹ-con, cây-quả, bóng đen).',
+    category: 'preschool',
+  },
+  {
+    id: 'counting',
+    label: 'Tập đếm & Chọn số lượng',
+    emoji: '🔢',
+    description: 'Đếm số lượng đồ vật/con vật (1-10) và chọn số đúng',
+    detail: 'Làm quen với chữ số, tập đếm trực quan bằng Emoji sinh động, phát triển tư duy số học ban đầu.',
+    category: 'preschool',
+  },
+  {
+    id: 'dot_to_dot',
+    label: 'Nối điểm theo số/chữ (Dot-to-Dot)',
+    emoji: '✏️',
+    description: 'Nối các điểm từ 1-10 hoặc chữ cái để hoàn thiện hình vẽ',
+    detail: 'Rèn luyện kỹ năng cầm bút, thứ tự dãy số và bảng chữ cái tiếng Việt cho bé.',
+    category: 'preschool',
+  },
+  {
+    id: 'maze',
+    label: 'Mê cung / Tìm đường đi',
+    emoji: '🌀',
+    description: 'Giúp bạn nhỏ hoặc con vật tìm đường qua mê cung',
+    detail: 'Rèn luyện tính kiên nhẫn, định hướng không gian và khả năng giải quyết vấn đề đơn giản.',
+    category: 'preschool',
+  },
+  {
+    id: 'pattern_sequence',
+    label: 'Quy luật hình vẽ (Pattern)',
+    emoji: '🔄',
+    description: 'Quan sát chuỗi hình vẽ và chọn hình tiếp theo theo quy luật',
+    detail: 'Kích thích tư duy logic, nhận biết quy luật lặp lại đơn giản cho trẻ mầm non.',
+    category: 'preschool',
+  },
+  {
+    id: 'tracing',
+    label: 'Tập đồ nét / Nối nét đứt',
+    emoji: '✍️',
+    description: 'Đồ theo các nét thẳng, cong, lượn sóng hoặc chữ/số nét đứt',
+    detail: 'Luyện kỹ năng vận động tay và tư thế cầm bút vững vàng trước khi bước vào lớp 1.',
+    category: 'preschool',
+  },
+
+  // --- Dạng bài cơ bản phổ thông ---
   {
     id: 'multiple_choice',
     label: 'Trắc nghiệm',
     emoji: '📝',
     description: 'Chọn đáp án đúng (A, B, C, D)',
     detail: 'Kiểm tra nhanh mức độ ghi nhớ kiến thức. Phù hợp tất cả môn học.',
+    category: 'standard',
   },
   {
     id: 'fill_blank',
@@ -126,6 +207,7 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '✏️',
     description: 'Điền từ/cụm từ còn thiếu vào chỗ trống',
     detail: 'Rèn khả năng ghi nhớ chính xác nội dung trọng tâm.',
+    category: 'standard',
   },
   {
     id: 'matching',
@@ -133,6 +215,7 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '🔗',
     description: 'Ghép thông tin giữa hai cột tương ứng',
     detail: 'Giúp học sinh nhận diện mối liên hệ kiến thức.',
+    category: 'standard',
   },
   {
     id: 'true_false',
@@ -140,6 +223,7 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '✅',
     description: 'Xác định tính chính xác của nhận định',
     detail: 'Phù hợp kiểm tra hiểu biết cơ bản.',
+    category: 'standard',
   },
   {
     id: 'short_answer',
@@ -147,6 +231,7 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '🖊️',
     description: 'Trả lời ngắn gọn theo yêu cầu',
     detail: 'Đánh giá khả năng diễn đạt và hiểu vấn đề.',
+    category: 'standard',
   },
   {
     id: 'find_error',
@@ -154,55 +239,7 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '🔎',
     description: 'Phát hiện và sửa nội dung chưa chính xác',
     detail: 'Rèn tư duy phản biện và phân tích. Phù hợp Toán, Ngữ văn, Tiếng Anh.',
-  },
-  {
-    id: 'situation',
-    label: 'Tình huống – Giải quyết vấn đề',
-    emoji: '💡',
-    description: 'Đưa ra tình huống thực tế',
-    detail: 'Học sinh đề xuất phương án xử lý phù hợp. Rèn kỹ năng tư duy ứng dụng.',
-  },
-  {
-    id: 'mind_map',
-    label: 'Sơ đồ tư duy',
-    emoji: '🧠',
-    description: 'Hoàn thành sơ đồ còn thiếu hoặc tự thiết kế',
-    detail: 'Giúp hệ thống hóa và ghi nhớ kiến thức sâu hơn.',
-  },
-  {
-    id: 'role_play',
-    label: 'Nhập vai',
-    emoji: '🎭',
-    description: 'Đóng vai nhân vật hoặc chuyên gia',
-    detail: 'Viết bài phát biểu, nhật ký, phỏng vấn sáng tạo. Phù hợp Ngữ văn, Lịch sử.',
-  },
-  {
-    id: 'chart_analysis',
-    label: 'Phân tích bảng / biểu đồ',
-    emoji: '📊',
-    description: 'Quan sát số liệu và rút ra nhận xét',
-    detail: 'Phát triển kỹ năng phân tích và tổng hợp. Phù hợp Toán, Địa lý, Sinh học.',
-  },
-  {
-    id: 'compare',
-    label: 'So sánh – Đối chiếu',
-    emoji: '⚖️',
-    description: 'Chỉ ra điểm giống và khác giữa hai nội dung',
-    detail: 'Thường trình bày dưới dạng bảng để rõ ràng hơn.',
-  },
-  {
-    id: 'extended_writing',
-    label: 'Viết mở rộng',
-    emoji: '✍️',
-    description: 'Viết đoạn nghị luận hoặc cảm nhận sâu hơn',
-    detail: 'Khuyến khích tư duy sáng tạo và diễn đạt cá nhân.',
-  },
-  {
-    id: 'mini_project',
-    label: 'Dự án nhỏ (Mini Project)',
-    emoji: '🎯',
-    description: 'Tìm hiểu chủ đề trong 1–3 ngày',
-    detail: 'Có sản phẩm: poster, video, thuyết trình. Phù hợp học tập theo dự án.',
+    category: 'standard',
   },
   {
     id: 'card_match',
@@ -210,6 +247,65 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '🧩',
     description: 'Cắt rời nội dung → học sinh sắp xếp logic',
     detail: 'Tăng tính tương tác và ghi nhớ sâu.',
+    category: 'standard',
+  },
+  {
+    id: 'compare',
+    label: 'So sánh – Đối chiếu',
+    emoji: '⚖️',
+    description: 'Chỉ ra điểm giống và khác giữa hai nội dung',
+    detail: 'Thường trình bày dưới dạng bảng để rõ ràng hơn.',
+    category: 'standard',
+  },
+
+  // --- Dạng bài nâng cao & tư duy ---
+  {
+    id: 'situation',
+    label: 'Tình huống – Giải quyết vấn đề',
+    emoji: '💡',
+    description: 'Đưa ra tình huống thực tế',
+    detail: 'Học sinh đề xuất phương án xử lý phù hợp. Rèn kỹ năng tư duy ứng dụng.',
+    category: 'advanced',
+  },
+  {
+    id: 'mind_map',
+    label: 'Sơ đồ tư duy',
+    emoji: '🧠',
+    description: 'Hoàn thành sơ đồ còn thiếu hoặc tự thiết kế',
+    detail: 'Giúp hệ thống hóa và ghi nhớ kiến thức sâu hơn.',
+    category: 'advanced',
+  },
+  {
+    id: 'role_play',
+    label: 'Nhập vai',
+    emoji: '🎭',
+    description: 'Đóng vai nhân vật hoặc chuyên gia',
+    detail: 'Viết bài phát biểu, nhật ký, phỏng vấn sáng tạo. Phù hợp Ngữ văn, Lịch sử.',
+    category: 'advanced',
+  },
+  {
+    id: 'chart_analysis',
+    label: 'Phân tích bảng / biểu đồ',
+    emoji: '📊',
+    description: 'Quan sát số liệu và rút ra nhận xét',
+    detail: 'Phát triển kỹ năng phân tích và tổng hợp. Phù hợp Toán, Địa lý, Sinh học.',
+    category: 'advanced',
+  },
+  {
+    id: 'extended_writing',
+    label: 'Viết mở rộng',
+    emoji: '✍️',
+    description: 'Viết đoạn nghị luận hoặc cảm nhận sâu hơn',
+    detail: 'Khuyến khích tư duy sáng tạo và diễn đạt cá nhân.',
+    category: 'advanced',
+  },
+  {
+    id: 'mini_project',
+    label: 'Dự án nhỏ (Mini Project)',
+    emoji: '🎯',
+    description: 'Tìm hiểu chủ đề trong 1–3 ngày',
+    detail: 'Có sản phẩm: poster, video, thuyết trình. Phù hợp học tập theo dự án.',
+    category: 'advanced',
   },
   {
     id: 'self_assess',
@@ -217,6 +313,7 @@ export const QUESTION_TYPES_DATA: QuestionTypeInfo[] = [
     emoji: '📌',
     description: 'Học sinh tự chấm mức độ hiểu bài',
     detail: 'Tự phản hồi sau giờ học. Phù hợp cuối tiết hoặc cuối chương.',
+    category: 'advanced',
   },
 ];
 
@@ -231,6 +328,7 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 };
 
 export const GRADE_LEVEL_LABELS: Record<GradeLevel, string> = {
+  preschool: 'Mầm non',
   primary: 'Tiểu học',
   secondary: 'THCS',
   high_school: 'THPT',
@@ -251,13 +349,20 @@ export const CONTENT_MODE_DESCRIPTIONS: Record<ContentMode, string> = {
 };
 
 export const DEFAULT_SUBJECTS: Subject[] = [
-  { id: 'math', name: 'Toán học', icon: 'Calculator', color: '#14b8a6', questionsCount: 0 },
+  // Mầm non
+  { id: 'preschool_math', name: 'Làm quen với Toán (Mầm non)', icon: 'Calculator', color: '#14b8a6', questionsCount: 0 },
+  { id: 'preschool_letters', name: 'Làm quen chữ cái (Mầm non)', icon: 'BookOpen', color: '#f59e0b', questionsCount: 0 },
+  { id: 'preschool_discovery', name: 'Khám phá thế giới (Mầm non)', icon: 'Globe', color: '#10b981', questionsCount: 0 },
+  { id: 'preschool_art', name: 'Tạo hình & Vẽ tranh (Mầm non)', icon: 'Palette', color: '#ec4899', questionsCount: 0 },
+  { id: 'preschool_skills', name: 'Kỹ năng sống (Mầm non)', icon: 'Heart', color: '#8b5cf6', questionsCount: 0 },
+  // Phổ thông
+  { id: 'math', name: 'Toán học', icon: 'Calculator', color: '#0ea5e9', questionsCount: 0 },
   { id: 'physics', name: 'Vật lý', icon: 'Atom', color: '#f59e0b', questionsCount: 0 },
   { id: 'chemistry', name: 'Hóa học', icon: 'FlaskConical', color: '#10b981', questionsCount: 0 },
   { id: 'biology', name: 'Sinh học', icon: 'Leaf', color: '#22c55e', questionsCount: 0 },
   { id: 'literature', name: 'Ngữ văn', icon: 'BookOpen', color: '#ef4444', questionsCount: 0 },
   { id: 'english', name: 'Tiếng Anh', icon: 'Globe', color: '#8b5cf6', questionsCount: 0 },
-  { id: 'history', name: 'Lịch sử', icon: 'Landmark', color: '#f59e0b', questionsCount: 0 },
+  { id: 'history', name: 'Lịch sử', icon: 'Landmark', color: '#f97316', questionsCount: 0 },
   { id: 'geography', name: 'Địa lý', icon: 'MapPin', color: '#06b6d4', questionsCount: 0 },
   { id: 'informatics', name: 'Tin học', icon: 'Monitor', color: '#6366f1', questionsCount: 0 },
 ];

@@ -53,6 +53,43 @@ export default function WorksheetCreator({ onCreated }: Props) {
   // Expand/collapse for question type details
   const [expandedType, setExpandedType] = useState<QuestionType | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [typeCategoryFilter, setTypeCategoryFilter] = useState<'all' | 'preschool' | 'standard' | 'advanced'>('all');
+
+  const handleGradeLevelChange = (key: GradeLevel) => {
+    setGradeLevel(key);
+    if (key === 'preschool') {
+      setTypeCategoryFilter('preschool');
+      const hasPreschoolType = questionTypes.some(t => {
+        const found = QUESTION_TYPES_DATA.find(q => q.id === t);
+        return found?.category === 'preschool';
+      });
+      if (!hasPreschoolType) {
+        setQuestionTypes(['counting', 'shadow_match', 'coloring']);
+      }
+      if (subjectId === 'math' || !subjectId.startsWith('preschool')) {
+        setSubjectId('preschool_math');
+      }
+    } else {
+      if (typeCategoryFilter === 'preschool') {
+        setTypeCategoryFilter('all');
+      }
+      if (subjectId.startsWith('preschool')) {
+        setSubjectId('math');
+      }
+      const hasStandardType = questionTypes.some(t => {
+        const found = QUESTION_TYPES_DATA.find(q => q.id === t);
+        return found?.category !== 'preschool';
+      });
+      if (!hasStandardType) {
+        setQuestionTypes(['multiple_choice']);
+      }
+    }
+  };
+
+  const filteredQuestionTypes = QUESTION_TYPES_DATA.filter(t => {
+    if (typeCategoryFilter === 'all') return true;
+    return t.category === typeCategoryFilter;
+  });
 
   const toggleType = (t: QuestionType) => {
     setQuestionTypes(prev =>
@@ -194,7 +231,7 @@ export default function WorksheetCreator({ onCreated }: Props) {
       setError(err instanceof Error ? err.message : 'Có lỗi xảy ra');
       setStep('configure');
     }
-  }, [rawContent, subjectId, questionTypes, questionCount, difficulty, gradeLevel, contentMode, title]);
+  }, [rawContent, subjectId, questionTypes, questionCount, difficulty, gradeLevel, language, contentMode, title]);
 
   const handleSave = () => {
     const sub = getAllSubjects().find(s => s.id === subjectId);
@@ -498,17 +535,17 @@ export default function WorksheetCreator({ onCreated }: Props) {
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Cấp học</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {(Object.entries(GRADE_LEVEL_LABELS) as [GradeLevel, string][]).map(([key, label]) => (
                       <button
                         key={key}
-                        onClick={() => setGradeLevel(key)}
+                        onClick={() => handleGradeLevelChange(key)}
                         className={`btn-raised py-2.5 rounded-xl text-sm font-medium transition-all ${gradeLevel === key
                           ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/25 btn-raised-teal'
                           : 'bg-slate-50 text-slate-600 hover:bg-slate-100 btn-raised-white'
                           }`}
                       >
-                        {label}
+                        {key === 'preschool' ? '👶 ' : ''}{label}
                       </button>
                     ))}
                   </div>
@@ -592,7 +629,7 @@ export default function WorksheetCreator({ onCreated }: Props) {
               </div>
 
               {/* Right column: Question Types */}
-              <div className="bg-white rounded-2xl border border-slate-200/60 p-6 space-y-5">
+              <div className="bg-white rounded-2xl border border-slate-200/60 p-6 space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <label className="block text-sm font-semibold text-slate-700">
@@ -612,6 +649,50 @@ export default function WorksheetCreator({ onCreated }: Props) {
                     </button>
                   </div>
 
+                  {/* Category Filter Tabs */}
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl mb-3 text-xs">
+                    <button
+                      onClick={() => setTypeCategoryFilter('all')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all ${
+                        typeCategoryFilter === 'all'
+                          ? 'bg-white text-teal-700 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Tất cả ({QUESTION_TYPES_DATA.length})
+                    </button>
+                    <button
+                      onClick={() => setTypeCategoryFilter('preschool')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1 ${
+                        typeCategoryFilter === 'preschool'
+                          ? 'bg-white text-pink-600 shadow-sm font-semibold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>👶</span> Mầm non ({QUESTION_TYPES_DATA.filter(t => t.category === 'preschool').length})
+                    </button>
+                    <button
+                      onClick={() => setTypeCategoryFilter('standard')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all ${
+                        typeCategoryFilter === 'standard'
+                          ? 'bg-white text-teal-700 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Cơ bản ({QUESTION_TYPES_DATA.filter(t => t.category === 'standard').length})
+                    </button>
+                    <button
+                      onClick={() => setTypeCategoryFilter('advanced')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg font-medium transition-all ${
+                        typeCategoryFilter === 'advanced'
+                          ? 'bg-white text-teal-700 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Nâng cao ({QUESTION_TYPES_DATA.filter(t => t.category === 'advanced').length})
+                    </button>
+                  </div>
+
                   {analyzing && (
                     <div className="mb-3 p-3 rounded-xl bg-teal-50 border border-teal-100 flex items-center gap-2">
                       <Loader2 className="w-4 h-4 text-teal-500 animate-spin" />
@@ -619,8 +700,8 @@ export default function WorksheetCreator({ onCreated }: Props) {
                     </div>
                   )}
 
-                  <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
-                    {QUESTION_TYPES_DATA.map(typeInfo => {
+                  <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
+                    {filteredQuestionTypes.map(typeInfo => {
                       const isSelected = questionTypes.includes(typeInfo.id);
                       const isExpanded = expandedType === typeInfo.id;
 
@@ -653,6 +734,11 @@ export default function WorksheetCreator({ onCreated }: Props) {
                               <div className="flex items-center gap-2">
                                 <span className="text-base">{typeInfo.emoji}</span>
                                 <span className="font-medium truncate">{typeInfo.label}</span>
+                                {typeInfo.category === 'preschool' && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-pink-100 text-pink-700 font-semibold">
+                                    Mầm non
+                                  </span>
+                                )}
                               </div>
                               <p className={`text-xs mt-0.5 ${isSelected ? 'text-teal-500' : 'text-slate-400'}`}>
                                 {typeInfo.description}

@@ -83,8 +83,8 @@ export async function exportWorksheetToWord(
       })
     );
 
-    // Options
-    if (q.type === 'multiple_choice' && q.options) {
+    // Options (for multiple_choice, counting, circle_odd, pattern_sequence)
+    if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
       q.options.forEach((opt, j) => {
         const label = String.fromCharCode(65 + j);
         children.push(
@@ -116,18 +116,57 @@ export async function exportWorksheetToWord(
       );
     }
 
-    // Matching pairs as table
-    if (q.type === 'matching' && q.matchingPairs) {
+    // Preschool specialized guides
+    if (q.type === 'coloring') {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '    🎨 [Bé hãy dùng bút sáp màu tô thật đẹp theo yêu cầu]', size: 20, color: '777777', italics: true })],
+          spacing: { after: 40 },
+        })
+      );
+    }
+
+    if (q.type === 'dot_to_dot') {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '    ✏️ [Bé hãy dùng bút nối lần lượt các số theo thứ tự 1 → 2 → 3...]', size: 20, color: '777777', italics: true })],
+          spacing: { after: 40 },
+        })
+      );
+    }
+
+    if (q.type === 'maze') {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '    🌀 [Bé hãy quan sát và vẽ đường đi vượt qua mê cung]', size: 20, color: '777777', italics: true })],
+          spacing: { after: 40 },
+        })
+      );
+    }
+
+    if (q.type === 'tracing') {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: '    ✍️ [Bé hãy cầm bút đồ theo đúng các nét đứt]', size: 20, color: '777777', italics: true })],
+          spacing: { after: 40 },
+        })
+      );
+    }
+
+    // Matching pairs as table (for matching, shadow_match, card_match)
+    if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
+      const colALabel = q.type === 'shadow_match' ? 'Hình ảnh' : 'Cột A';
+      const colBLabel = q.type === 'shadow_match' ? 'Bóng / Ghép đôi' : 'Cột B';
       const tableRows = [
         new TableRow({
           children: [
             new TableCell({
               width: { size: 50, type: WidthType.PERCENTAGE },
-              children: [new Paragraph({ children: [new TextRun({ text: 'Cột A', bold: true, size: 20 })] })],
+              children: [new Paragraph({ children: [new TextRun({ text: colALabel, bold: true, size: 20 })] })],
             }),
             new TableCell({
               width: { size: 50, type: WidthType.PERCENTAGE },
-              children: [new Paragraph({ children: [new TextRun({ text: 'Cột B', bold: true, size: 20 })] })],
+              children: [new Paragraph({ children: [new TextRun({ text: colBLabel, bold: true, size: 20 })] })],
             }),
           ],
         }),

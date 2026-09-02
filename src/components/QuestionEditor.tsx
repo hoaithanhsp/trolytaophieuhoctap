@@ -30,6 +30,9 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
         setMatchingPairs(question.matchingPairs || [{ left: '', right: '' }]);
     }, [question]);
 
+    const hasOptions = ['multiple_choice', 'true_false', 'counting', 'circle_odd', 'pattern_sequence'].includes(type);
+    const hasMatching = ['matching', 'shadow_match', 'card_match'].includes(type);
+
     const handleSave = () => {
         const updated: Question = {
             ...question,
@@ -38,8 +41,8 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
             difficulty,
             correctAnswer,
             explanation: explanation || undefined,
-            options: (type === 'multiple_choice' || type === 'true_false') ? options : undefined,
-            matchingPairs: type === 'matching' ? matchingPairs : undefined,
+            options: hasOptions ? options : undefined,
+            matchingPairs: hasMatching ? matchingPairs : undefined,
         };
         onSave(updated);
     };
@@ -122,10 +125,10 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                         </div>
                     </div>
 
-                    {/* Multiple choice options */}
-                    {(type === 'multiple_choice' || type === 'true_false') && (
+                    {/* Options */}
+                    {hasOptions && (
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Đáp án</label>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Các lựa chọn đáp án</label>
                             <div className="space-y-2">
                                 {options.map((opt, i) => (
                                     <div key={i} className="flex items-center gap-2">
@@ -136,7 +139,7 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                                             value={opt}
                                             onChange={e => updateOption(i, e.target.value)}
                                             className="flex-1 px-3 py-2 rounded-xl border border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm"
-                                            placeholder={`Đáp án ${String.fromCharCode(65 + i)}`}
+                                            placeholder={`Lựa chọn ${String.fromCharCode(65 + i)}`}
                                         />
                                         {options.length > 2 && (
                                             <button
@@ -149,22 +152,22 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                                     </div>
                                 ))}
                             </div>
-                            {type === 'multiple_choice' && (
+                            {type !== 'true_false' && (
                                 <button
                                     onClick={addOption}
                                     className="mt-2 flex items-center gap-1.5 text-sm text-teal-600 hover:text-teal-700 font-medium"
                                 >
                                     <Plus className="w-4 h-4" />
-                                    Thêm đáp án
+                                    Thêm lựa chọn
                                 </button>
                             )}
                         </div>
                     )}
 
                     {/* Matching pairs */}
-                    {type === 'matching' && (
+                    {hasMatching && (
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Cặp nối</label>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Cặp nối tương ứng</label>
                             <div className="space-y-2">
                                 {matchingPairs.map((pair, i) => (
                                     <div key={i} className="flex items-center gap-2">
@@ -173,14 +176,14 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                                             value={pair.left}
                                             onChange={e => updateMatchingPair(i, 'left', e.target.value)}
                                             className="flex-1 px-3 py-2 rounded-xl border border-teal-200 bg-teal-50/30 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm"
-                                            placeholder="Cột A"
+                                            placeholder="Hình ảnh / Cột A"
                                         />
                                         <span className="text-slate-300">→</span>
                                         <input
                                             value={pair.right}
                                             onChange={e => updateMatchingPair(i, 'right', e.target.value)}
                                             className="flex-1 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50/30 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none text-sm"
-                                            placeholder="Cột B"
+                                            placeholder="Bóng / Đối ứng / Cột B"
                                         />
                                         {matchingPairs.length > 1 && (
                                             <button

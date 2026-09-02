@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai/web';
+import { GoogleGenAI } from '@google/genai';
 import { QUESTION_TYPES_DATA } from '../types';
 import type { AiProvider, WorksheetGenerationRequest, Question, QuestionType, ContentMode } from '../types';
 import { getSettings, getActiveApiKey, getProvider } from './storage';
@@ -11,6 +11,7 @@ export function isValidGoogleAiApiKey(apiKey: string): boolean {
 
 export type GoogleAiApiErrorType =
   | 'INVALID_API_KEY'
+  | 'PERMISSION_DENIED'
   | 'QUOTA_EXCEEDED'
   | 'MODEL_OVERLOADED'
   | 'MODEL_UNAVAILABLE'
@@ -51,6 +52,23 @@ export function parseApiError(status?: number, responseBody = '', error?: unknow
   const errorMessage = error instanceof Error ? error.message : String(error ?? '');
   const serialized = `${status ?? ''} ${responseBody} ${errorMessage}`.toLowerCase();
 
+  if (
+    status === 401 ||
+    serialized.includes('api_key_invalid') ||
+    serialized.includes('api key not valid') ||
+    serialized.includes('invalid api key')
+  ) {
+    return 'INVALID_API_KEY';
+  }
+
+  if (
+    status === 403 ||
+    serialized.includes('permission_denied') ||
+    serialized.includes('permission denied')
+  ) {
+    return 'PERMISSION_DENIED';
+  }
+
   if (status === 429 || serialized.includes('resource_exhausted') || serialized.includes('quota')) {
     return 'QUOTA_EXCEEDED';
   }
@@ -66,15 +84,6 @@ export function parseApiError(status?: number, responseBody = '', error?: unknow
     serialized.includes('temporarily unavailable')
   ) {
     return 'MODEL_OVERLOADED';
-  }
-
-  if (
-    serialized.includes('api_key_invalid') ||
-    serialized.includes('api key not valid') ||
-    serialized.includes('invalid api key') ||
-    status === 401
-  ) {
-    return 'INVALID_API_KEY';
   }
 
   if (status === 400 || serialized.includes('invalid argument') || serialized.includes('invalid_argument')) {
@@ -93,20 +102,50 @@ export function parseApiError(status?: number, responseBody = '', error?: unknow
   return 'UNKNOWN';
 }
 
-function getFriendlyErrorMessage(type: GoogleAiApiErrorType, status?: number): string {
+export function getFriendlyErrorMessage(type: GoogleAiApiErrorType, provider: AiProvider = 'gemini', status?: number): string {
   switch (type) {
     case 'INVALID_API_KEY':
-      return 'API Key không hợp lệ. Vui lòng kiểm tra định dạng (bắt đầu bằng AIzaSy hoặc AQ) và thử lại.';
+      return 'API Key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại trong Cài đặt.';
+    case 'PERMISSION_DENIED':
+      return provider === 'agent-platform'
+        ? 'Google đã nhận key nhưng dự án/key chưa được cấp quyền gọi Agent Platform API hoặc model này. Vui lòng kiểm tra Agent Platform API đã bật, billing và quyền sử dụng model.'
+        : 'API key không có quyền truy cập Gemini API.';
     case 'QUOTA_EXCEEDED':
-      return 'API Key đã hết quota hoặc bị giới hạn tốc độ. Vui lòng chờ ít phút hoặc đổi API Key khác.';
+      return 'Đã hết quota hoặc vượt giới hạn tốc độ API. Vui lòng đợi rồi thử lại.';
     case 'MODEL_OVERLOADED':
-      return 'Hệ thống AI đang quá tải tạm thời. Đã tự động thử các model dự phòng nhưng không thành công, vui lòng thử lại sau.';
+      return 'Model đang quá tải; app đang tự động thử model dự phòng.';
     case 'MODEL_UNAVAILABLE':
       return 'Model AI đang chọn không khả dụng. Vui lòng kiểm tra cấu hình trong phần Cài đặt.';
     case 'INVALID_ARGUMENT':
       return 'Yêu cầu không hợp lệ. Vui lòng kiểm tra lại dữ liệu đầu vào.';
     default:
       return `Lỗi kết nối API${status ? `: ${status}` : ''}. Vui lòng thử lại.`;
+  }
+}
+
+export async function testGoogleAiConnection(apiKey: string, provider: AiProvider, model?: string): Promise<boolean> {
+  const trimmed = apiKey.trim();
+  if (!trimmed) {
+    throw new Error('Vui lòng cấu hình API Key trước khi sử dụng tính năng này.');
+  }
+  if (!isValidGoogleAiApiKey(trimmed)) {
+    throw new Error('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
+  }
+
+  const testModel = model || (provider === 'agent-platform' ? 'gemini-2.5-flash' : 'gemini-3.6-flash');
+  try {
+    const ai = createGoogleAiClient(trimmed, provider);
+    const res = await ai.models.generateContent({
+      model: testModel,
+      contents: 'Xin chào',
+    });
+    return Boolean(res && res.text);
+  } catch (error: unknown) {
+    const errObj = error as { status?: number; statusCode?: number; message?: string } | undefined;
+    const status = errObj?.status || errObj?.statusCode;
+    const responseBody = errObj?.message || String(error || '');
+    const errorType = parseApiError(status, responseBody, error);
+    throw new Error(getFriendlyErrorMessage(errorType, provider, status));
   }
 }
 
@@ -120,7 +159,7 @@ export async function callGoogleAiWithFallback({
   apiKey: string;
   provider: AiProvider;
   selectedModel?: string;
-  contents: any;
+  contents: unknown;
   forceJson?: boolean;
 }): Promise<string> {
   const models = getFallbackModels(provider, selectedModel);
@@ -136,7 +175,7 @@ export async function callGoogleAiWithFallback({
 
       const response = await ai.models.generateContent({
         model,
-        contents,
+        contents: contents as Parameters<typeof ai.models.generateContent>[0]['contents'],
         config: Object.keys(config).length > 0 ? config : undefined,
       });
 
@@ -145,24 +184,25 @@ export async function callGoogleAiWithFallback({
         return responseText;
       }
       throw new GoogleAiApiError('Không nhận được phản hồi văn bản từ AI.', 'UNKNOWN', undefined, model);
-    } catch (error: any) {
-      const status = error?.status || error?.statusCode;
-      const responseBody = error?.message || String(error || '');
+    } catch (error: unknown) {
+      const errObj = error as { status?: number; statusCode?: number; message?: string } | undefined;
+      const status = errObj?.status || errObj?.statusCode;
+      const responseBody = errObj?.message || String(error || '');
       const errorType = parseApiError(status, responseBody, error);
 
       // Stop immediately on non-retryable errors
       if (errorType === 'INVALID_API_KEY' || errorType === 'QUOTA_EXCEEDED' || errorType === 'INVALID_ARGUMENT') {
-        throw new Error(getFriendlyErrorMessage(errorType, status));
+        throw new Error(getFriendlyErrorMessage(errorType, provider, status));
       }
-      if (provider === 'gemini' && status === 403) {
-        throw new Error(getFriendlyErrorMessage('INVALID_API_KEY', status));
+      if (provider === 'gemini' && errorType === 'PERMISSION_DENIED') {
+        throw new Error(getFriendlyErrorMessage('PERMISSION_DENIED', 'gemini', status));
       }
 
-      lastError = error instanceof Error ? error : new Error(getFriendlyErrorMessage(errorType, status));
+      lastError = error instanceof Error ? error : new Error(getFriendlyErrorMessage(errorType, provider, status));
 
       const nextModel = models[index + 1];
       if (nextModel) {
-        console.warn(`[${provider}] Model ${model} thất bại (Lỗi: ${errorType}); tự động thử model dự phòng ${nextModel}.`);
+        console.warn(`[${provider}] Model ${model} thất bại (${errorType}); tự động thử model dự phòng ${nextModel}.`);
       }
     }
   }
@@ -176,7 +216,7 @@ async function callGoogleAi(prompt: string, forceJson = false): Promise<string> 
   const apiKey = getActiveApiKey(settings).trim();
 
   if (!apiKey) {
-    throw new Error('Vui lòng nhập API Key trong phần Cài đặt!');
+    throw new Error('Vui lòng cấu hình API Key trước khi sử dụng tính năng này.');
   }
 
   if (!isValidGoogleAiApiKey(apiKey)) {
@@ -192,26 +232,7 @@ async function callGoogleAi(prompt: string, forceJson = false): Promise<string> 
   });
 }
 
-export async function testGoogleAiConnection(
-  apiKey: string,
-  provider: AiProvider,
-  selectedModel?: string
-): Promise<void> {
-  const trimmedKey = apiKey.trim();
-
-  if (!isValidGoogleAiApiKey(trimmedKey)) {
-    throw new Error('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
-  }
-
-  await callGoogleAiWithFallback({
-    apiKey: trimmedKey,
-    provider,
-    selectedModel,
-    contents: 'Say "OK" in one word.',
-  });
-}
-
-export async function testGeminiApiConnection(apiKey: string, selectedModel?: string): Promise<void> {
+export async function testGeminiApiConnection(apiKey: string, selectedModel?: string): Promise<boolean> {
   const settings = getSettings();
   const provider = getProvider(settings);
   return testGoogleAiConnection(apiKey, provider, selectedModel);
@@ -232,6 +253,7 @@ function getContentModeInstruction(mode: ContentMode): string {
 
 function getTypePromptDescription(type: QuestionType): string {
   const descriptions: Record<QuestionType, string> = {
+    // Phổ thông & nâng cao
     multiple_choice: 'trắc nghiệm (4 lựa chọn A, B, C, D, chỉ 1 đáp án đúng)',
     fill_blank: 'điền khuyết (dùng "___" cho chỗ trống)',
     matching: 'nối cột (tạo cặp nối cột A và cột B)',
@@ -247,6 +269,15 @@ function getTypePromptDescription(type: QuestionType): string {
     mini_project: 'dự án nhỏ (đề bài dự án 1-3 ngày, có sản phẩm cụ thể)',
     card_match: 'ghép thẻ kiến thức (sắp xếp logic các thẻ thông tin)',
     self_assess: 'tự đánh giá (câu hỏi tự chấm mức độ hiểu bài)',
+    // Mầm non
+    coloring: 'tô màu theo yêu cầu (hướng dẫn bé tô màu đồ vật/con vật/hình khối theo số lượng, màu sắc hoặc chỉ dẫn cụ thể)',
+    circle_odd: 'khoanh đối tượng khác biệt (đưa 4 đối tượng/hình ảnh kèm emoji trong options, yêu cầu tìm và khoanh hình khác loại)',
+    shadow_match: 'nối bóng / nối hình tương ứng (tạo cặp nối tương ứng giữa hình ảnh và bóng hoặc mẹ-con, cây-quả trong matchingPairs)',
+    counting: 'tập đếm & chọn số lượng (content chứa chuỗi emoji con vật/đồ vật từ 1-10 để bé đếm, options là các con số lựa chọn)',
+    dot_to_dot: 'nối điểm theo số/chữ (hướng dẫn bé nối theo thứ tự từ 1-5 hoặc 1-10 để tạo thành hình vẽ hoàn chỉnh)',
+    maze: 'mê cung / tìm đường đi (đưa đề bài dẫn đường sinh động giúp bạn nhỏ hoặc con vật vượt mê cung)',
+    pattern_sequence: 'quy luật hình vẽ (content là chuỗi emoji hình vẽ theo quy luật ví dụ "🔴 🔵 🔴 🔵 ___ ?", options là các hình/màu lựa chọn)',
+    tracing: 'tập đồ nét / nối nét đứt (hướng dẫn bé tập tô các nét cơ bản nét thẳng, cong, lượn sóng hoặc chữ/số nét đứt)',
   };
   return descriptions[type] || type;
 }
@@ -256,19 +287,34 @@ function buildWorksheetPrompt(request: WorksheetGenerationRequest): string {
   const diffLabel = { easy: 'dễ', medium: 'trung bình', hard: 'khó' }[request.difficulty];
   const contentModeInstruction = getContentModeInstruction(request.contentMode);
 
+  const preschoolDirective = request.gradeLevel === 'preschool' ? `
+ĐẶC BIỆT DÀNH CHO CẤP HỌC MẦM NON (LỨA TUỔI 3 - 6 TUỔI):
+- Sử dụng ngôn ngữ cực kỳ đơn giản, ngắn gọn, hồn nhiên, dễ thương, sinh động, dễ hiểu cho trẻ nhỏ.
+- Sử dụng nhiều Emoji minh họa trực quan phong phú (con vật: 🐶 🐱 🐰 🐻 🐼 🐸 🦁 🐘, hoa quả: 🍎 🍌 🍓 🍇 🍉 🍊, đồ vật: 🚗 ✈️ 🚀 🎈 ⚽ 🎨, hình khối: ⭐ 🔴 🔷 🟩...).
+- Với dạng "counting" (Tập đếm): content phải chứa các emoji xếp liền nhau (ví dụ: "Bé hãy đếm xem có bao nhiêu chú thỏ: 🐰🐰🐰🐰"), options là 4 số lựa chọn (ví dụ: ["2", "3", "4", "5"]), correctAnswer là số đúng ("4").
+- Với dạng "circle_odd" (Khoanh khác biệt): content là câu hỏi (ví dụ: "Bé hãy tìm xem bạn nào KHÔNG PHẢI là con vật sống dưới nước?"), options là 4 lựa chọn kèm emoji (ví dụ: ["🐟 Cá vàng", "🐙 Bạch tuộc", "🦀 Cua biển", "🐱 Mèo con"]), correctAnswer là con khác loại ("🐱 Mèo con").
+- Với dạng "pattern_sequence" (Quy luật hình): content là chuỗi emoji có quy luật (ví dụ: "Bé hãy chọn hình tiếp theo cho dãy: 🍎 🍌 🍎 🍌 ___ ?"), options là 4 hình lựa chọn (ví dụ: ["🍎 Quả táo", "🍌 Quả chuối", "🍇 Quả nho", "🍉 Quả dưa hấu"]), correctAnswer là hình đúng ("🍎 Quả táo").
+- Với dạng "shadow_match" (Nối bóng/hình tương ứng): matchingPairs chứa các cặp nối sinh động (ví dụ: left: "🐶 Chó con", right: "Bóng chú chó" hoặc left: "🐔 Gà mẹ", right: "🐥 Gà con" hoặc left: "🍎 Quả táo", right: "🌳 Cây táo").
+- Với dạng "coloring" (Tô màu): content nêu rõ hướng dẫn màu sắc (ví dụ: "Bé hãy tô màu ĐỎ cho quả cà chua 🍅, màu VÀNG cho quả chuối 🍌 và màu XANH LÁ cho chiếc lá 🍃 nhé!").
+- Với dạng "dot_to_dot" (Nối điểm): content hướng dẫn (ví dụ: "Bé hãy dùng bút chì nối các số từ 1 → 2 → 3 → 4 → 5 để hoàn thành ngôi sao ⭐ xinh xắn nhé!").
+- Với dạng "maze" (Mê cung): content nêu tình huống tìm đường (ví dụ: "Bé hãy giúp bạn Thỏ Trắng 🐰 tìm đường vượt qua mê cung để đến vườn Cà rốt 🥕 thơm ngon nhé!").
+- Với dạng "tracing" (Tập đồ nét): content hướng dẫn bé đồ nét (ví dụ: "Bé hãy dùng bút màu đồ theo các đường lượn sóng ~~~~~~ để giúp đàn cá 🐟 bơi ra biển lớn nhé!").
+` : '';
+
   return `Bạn là chuyên gia giáo dục Việt Nam. Hãy tạo ${request.questionCount} câu hỏi bài tập dạng: ${types}.
 
+Cấp học: ${request.gradeLevel === 'preschool' ? 'Mầm non (3-6 tuổi)' : request.gradeLevel === 'primary' ? 'Tiểu học' : request.gradeLevel === 'secondary' ? 'THCS' : 'THPT'}
 Nội dung/chủ đề: ${request.rawContent}
 
 CHẾ ĐỘ TẠO BÀI: ${contentModeInstruction}
-
-Yêu cầu:
+${preschoolDirective}
+Yêu cầu chung:
 - Độ khó: ${diffLabel}
 - Ngôn ngữ: ${request.language === 'en' ? 'English' : request.language === 'fr' ? 'Français' : 'Tiếng Việt (có dấu đầy đủ)'}
-- Mỗi câu hỏi phải rõ ràng, chính xác
-- Với trắc nghiệm: 4 lựa chọn, chỉ 1 đáp án đúng
+- Mỗi câu hỏi phải rõ ràng, chính xác, phù hợp lứa tuổi
+- Với trắc nghiệm / đếm số / khoanh khác biệt / quy luật: 4 lựa chọn trong options, chỉ 1 đáp án đúng trong correctAnswer
 - Với điền khuyết: dùng dấu "___" cho chỗ trống
-- Với nối cột/ghép thẻ: tạo cặp nối tương ứng trong matchingPairs
+- Với nối cột/ghép thẻ/nối bóng: tạo cặp nối tương ứng trong matchingPairs
 - Với tìm lỗi sai: nội dung câu hỏi chứa lỗi, correctAnswer là bản sửa đúng
 - Với tình huống: đưa tình huống thực tế, correctAnswer là phương án giải quyết
 - Với sơ đồ tư duy: mô tả cấu trúc sơ đồ cần hoàn thành
@@ -279,7 +325,7 @@ Yêu cầu:
 - Với dự án nhỏ: mô tả yêu cầu dự án, thời gian, sản phẩm
 - Với tự đánh giá: câu hỏi rubric tự chấm
 - Thêm giải thích ngắn cho mỗi đáp án
-- QUAN TRỌNG: Nếu có công thức toán học, hãy viết dạng LaTeX ($...$ inline, $$...$$ block)
+- QUAN TRỌNG: Nếu có công thức toán học từ cấp tiểu học trở lên, hãy viết dạng LaTeX ($...$ inline, $$...$$ block)
 
 Trả về JSON THUẦN (không markdown, không code block) với format:
 [
@@ -288,13 +334,15 @@ Trả về JSON THUẦN (không markdown, không code block) với format:
     "type": "${request.questionTypes[0]}",
     "options": ["A", "B", "C", "D"],
     "correctAnswer": "đáp án đúng",
-    "explanation": "giải thích",
+    "explanation": "giải thích ngắn",
     "difficulty": "${request.difficulty}",
     "matchingPairs": [{"left": "...", "right": "..."}]
   }
 ]
 
-Lưu ý: Chỉ trả về mảng JSON. Trường matchingPairs chỉ cần với loại matching/card_match. Trường options chỉ cần với loại multiple_choice và true_false.`;
+Lưu ý: Chỉ trả về mảng JSON. 
+- Trường matchingPairs chỉ dùng cho loại: matching, shadow_match, card_match.
+- Trường options chỉ dùng cho loại: multiple_choice, true_false, counting, circle_odd, pattern_sequence.`;
 }
 
 function extractJsonArray(text: string): unknown[] | null {
@@ -407,7 +455,7 @@ export async function analyzeImage(base64Data: string, mimeType: string): Promis
   const provider = getProvider(settings);
   const apiKey = getActiveApiKey(settings).trim();
 
-  if (!apiKey) throw new Error('Vui lòng nhập API Key trong phần Cài đặt!');
+  if (!apiKey) throw new Error('Vui lòng cấu hình API Key trước khi sử dụng tính năng này.');
   if (!isValidGoogleAiApiKey(apiKey)) {
     throw new Error('API Key cần bắt đầu bằng AIzaSy hoặc AQ.');
   }

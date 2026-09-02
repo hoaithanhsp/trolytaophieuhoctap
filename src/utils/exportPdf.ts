@@ -13,7 +13,7 @@ export async function exportWorksheetToPdf(
 
   if (printElement) {
     try {
-      await renderHtmlToPdf(worksheet, printElement, includeAnswers);
+      await renderHtmlToPdf(worksheet, printElement);
       return;
     } catch {
       // Fallback to text-based PDF
@@ -25,8 +25,7 @@ export async function exportWorksheetToPdf(
 
 async function renderHtmlToPdf(
   worksheet: Worksheet,
-  element: HTMLElement,
-  _includeAnswers: boolean
+  element: HTMLElement
 ): Promise<void> {
   // Wait for MathJax to finish rendering
   if (window.MathJax?.typesetPromise) {
@@ -167,7 +166,7 @@ async function generateTextPdf(worksheet: Worksheet, includeAnswers: boolean): P
     yPos += qLines.length * 5 + 2;
     pdf.setFont('helvetica', 'normal');
 
-    if (q.type === 'multiple_choice' && q.options) {
+    if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
       q.options.forEach((opt, j) => {
         checkPageBreak(6);
         const label = String.fromCharCode(65 + j);
@@ -177,7 +176,7 @@ async function generateTextPdf(worksheet: Worksheet, includeAnswers: boolean): P
       });
     }
 
-    if (q.type === 'matching' && q.matchingPairs) {
+    if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
       q.matchingPairs.forEach((pair, j) => {
         checkPageBreak(6);
         pdf.setFontSize(10);
@@ -189,6 +188,46 @@ async function generateTextPdf(worksheet: Worksheet, includeAnswers: boolean): P
     if (q.type === 'true_false' && q.options) {
       pdf.setFontSize(10);
       pdf.text(`  ${q.options.join(' / ')}`, margin + 4, yPos);
+      yPos += 5;
+    }
+
+    if (q.type === 'fill_blank') {
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text('  [Cho trong de hoc sinh dien vao]', margin + 4, yPos);
+      pdf.setTextColor(0, 0, 0);
+      yPos += 5;
+    }
+
+    if (q.type === 'coloring') {
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text('  [Be hay dung but sap mau to that dep theo yeu cau]', margin + 4, yPos);
+      pdf.setTextColor(0, 0, 0);
+      yPos += 5;
+    }
+
+    if (q.type === 'dot_to_dot') {
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text('  [Be hay noi cac diem theo thu tu so 1 -> 2 -> 3...]', margin + 4, yPos);
+      pdf.setTextColor(0, 0, 0);
+      yPos += 5;
+    }
+
+    if (q.type === 'maze') {
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text('  [Be hay ve duong di vuot qua me cung]', margin + 4, yPos);
+      pdf.setTextColor(0, 0, 0);
+      yPos += 5;
+    }
+
+    if (q.type === 'tracing') {
+      pdf.setFontSize(9);
+      pdf.setTextColor(120, 120, 120);
+      pdf.text('  [Be hay cam but do theo dung cac net dut]', margin + 4, yPos);
+      pdf.setTextColor(0, 0, 0);
       yPos += 5;
     }
 

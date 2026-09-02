@@ -45,16 +45,17 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
             <MathRenderer content={question.content} />
           </div>
 
-          {question.type === 'multiple_choice' && question.options && (
+          {/* Options for multiple_choice, counting, circle_odd, pattern_sequence */}
+          {['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(question.type) && question.options && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {question.options.map((opt, i) => {
                 const label = String.fromCharCode(65 + i);
-                const isCorrect = showAnswer && opt === question.correctAnswer;
+                const isCorrect = showAnswer && (opt === question.correctAnswer || opt.startsWith(question.correctAnswer));
                 return (
                   <div
                     key={i}
                     className={`px-3 py-2 rounded-xl text-sm border transition-colors ${isCorrect
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 font-medium'
                         : 'border-slate-100 bg-slate-50/50 text-slate-600'
                       }`}
                   >
@@ -66,10 +67,13 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
             </div>
           )}
 
-          {question.type === 'matching' && question.matchingPairs && (
+          {/* Matching pairs for matching, shadow_match, card_match */}
+          {['matching', 'shadow_match', 'card_match'].includes(question.type) && question.matchingPairs && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cột A</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  {question.type === 'shadow_match' ? 'Hình ảnh' : 'Cột A'}
+                </p>
                 {question.matchingPairs.map((pair, i) => (
                   <div key={i} className="px-3 py-2 rounded-xl bg-teal-50 text-teal-700 text-sm border border-teal-100">
                     {i + 1}. <MathRenderer content={pair.left} />
@@ -77,7 +81,9 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
                 ))}
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cột B</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  {question.type === 'shadow_match' ? 'Bóng / Ghép đôi' : 'Cột B'}
+                </p>
                 {question.matchingPairs.map((pair, i) => (
                   <div key={i} className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm border border-emerald-100">
                     {String.fromCharCode(97 + i)}. <MathRenderer content={pair.right} />
@@ -87,28 +93,32 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
             </div>
           )}
 
-          {question.type === 'true_false' && question.options && (
-            <div className="flex gap-3">
-              {question.options.map((opt, i) => {
-                const isCorrect = showAnswer && opt === question.correctAnswer;
-                return (
-                  <div
-                    key={i}
-                    className={`px-4 py-2 rounded-xl text-sm border transition-colors ${isCorrect
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                        : 'border-slate-100 bg-slate-50/50 text-slate-600'
-                      }`}
-                  >
-                    {opt}
-                  </div>
-                );
-              })}
+          {/* Visual Preschool Cards (coloring, dot_to_dot, maze, tracing) */}
+          {question.type === 'coloring' && (
+            <div className="p-3 rounded-xl bg-pink-50/60 border border-dashed border-pink-200 text-xs text-pink-700 flex items-center gap-2">
+              <span className="text-lg">🎨</span>
+              <span>Bé hãy dùng bút sáp màu tô thật khéo léo theo hướng dẫn nhé!</span>
             </div>
           )}
 
-          {question.type === 'fill_blank' && (
-            <div className="px-4 py-3 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-sm text-slate-400">
-              Chỗ trống để học sinh điền vào...
+          {question.type === 'dot_to_dot' && (
+            <div className="p-3 rounded-xl bg-indigo-50/60 border border-dashed border-indigo-200 text-xs text-indigo-700 flex items-center gap-2">
+              <span className="text-lg">✏️</span>
+              <span>Bé dùng bút nối lần lượt các số theo thứ tự 1 → 2 → 3... để tạo thành hình vẽ nhé!</span>
+            </div>
+          )}
+
+          {question.type === 'maze' && (
+            <div className="p-3 rounded-xl bg-amber-50/60 border border-dashed border-amber-200 text-xs text-amber-700 flex items-center gap-2">
+              <span className="text-lg">🌀</span>
+              <span>Bé quan sát kỹ và vẽ đường đi thông minh nhất trong mê cung nhé!</span>
+            </div>
+          )}
+
+          {question.type === 'tracing' && (
+            <div className="p-3 rounded-xl bg-sky-50/60 border border-dashed border-sky-200 text-xs text-sky-700 flex items-center gap-2">
+              <span className="text-lg">✍️</span>
+              <span>Bé cầm bút thật chắc và đồ theo đúng các nét đứt đứt này nhé!</span>
             </div>
           )}
 
