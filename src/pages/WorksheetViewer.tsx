@@ -1,13 +1,13 @@
 import { useState, useRef } from 'react';
 import {
-  ArrowLeft, Download, FileText, FileDown, Eye, EyeOff,
+  ArrowLeft, Download, FileText, Eye, EyeOff,
   Trash2, Printer, Share2, Globe,
 } from 'lucide-react';
 import type { Worksheet } from '../types';
 import { GRADE_LEVEL_LABELS } from '../types';
 import QuestionCard from '../components/QuestionCard';
 import MathRenderer from '../components/MathRenderer';
-import { exportWorksheetToPdf } from '../utils/exportPdf';
+
 import { exportWorksheetToWord } from '../utils/exportWord';
 import { exportWorksheetToHtml } from '../utils/exportHtml';
 import { deleteWorksheet } from '../utils/storage';
@@ -27,15 +27,7 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
   const [showShare, setShowShare] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  const handleExportPdf = async () => {
-    setExporting(true);
-    try {
-      await exportWorksheetToPdf(worksheet, includeAnswersInExport, printAreaRef.current);
-    } finally {
-      setExporting(false);
-      setShowExport(false);
-    }
-  };
+
 
   const handleExportWord = async () => {
     setExporting(true);
@@ -123,14 +115,7 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
           </label>
 
           <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={handleExportPdf}
-              disabled={exporting}
-              className="btn-raised btn-raised-red flex items-center gap-2 px-6 py-3 rounded-xl bg-red-50 text-red-600 font-medium text-sm hover:bg-red-100 transition-colors disabled:opacity-50"
-            >
-              <FileDown className="w-5 h-5" />
-              Xuất PDF
-            </button>
+
             <button
               onClick={handleExportWord}
               disabled={exporting}
