@@ -6,77 +6,50 @@ import { QUESTION_TYPE_LABELS, GRADE_LEVEL_LABELS, DIFFICULTY_LABELS } from '../
 export async function exportWorksheetToPdf(
   worksheet: Worksheet,
   includeAnswers: boolean,
-  printElement?: HTMLElement | null
+  _printElement?: HTMLElement | null
 ): Promise<void> {
-  // Strategy 1: If printElement is provided, capture it directly via html2canvas
-  if (printElement) {
-    try {
-      await renderHtmlToPdf(worksheet, printElement, includeAnswers);
-      return;
-    } catch {
-      // Fallback to Strategy 2
-    }
-  }
-
-  // Strategy 2: Build a temporary hidden DOM element with full Vietnamese support,
-  // render it via html2canvas, then generate PDF from the image.
+  // Always build our own HTML container with MathJax for reliable rendering
   await renderFromBuiltHtml(worksheet, includeAnswers);
 }
 
-async function renderHtmlToPdf(
+async function renderFromBuiltHtml(
   worksheet: Worksheet,
-  element: HTMLElement,
-  includeAnswers: boolean
+  includeAnswers: boolean,
 ): Promise<void> {
-  // Wait for MathJax to finish rendering
-  if (window.MathJax?.typesetPromise) {
-    await window.MathJax.typesetPromise([element]);
-  }
-
-  // If includeAnswers, clone the element and append answers section
-  let targetElement = element;
-  let clonedContainer: HTMLDivElement | null = null;
-
-  if (includeAnswers && worksheet.answerKey?.length) {
-    clonedContainer = document.createElement('div');
-    clonedContainer.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;padding:0;';
-    clonedContainer.innerHTML = element.innerHTML;
-
-    // Append answer key section
-    const answerHtml = buildAnswerKeyHtml(worksheet);
-    clonedContainer.insertAdjacentHTML('beforeend', answerHtml);
-
-    document.body.appendChild(clonedContainer);
-    targetElement = clonedContainer;
-
-    // Allow layout to settle
-    await new Promise(r => setTimeout(r, 200));
-  }
-
-  try {
-    await captureAndSavePdf(targetElement, worksheet);
-  } finally {
-    if (clonedContainer) {
-      document.body.removeChild(clonedContainer);
-    }
-  }
-}
-
-async function renderFromBuiltHtml(worksheet: Worksheet, includeAnswers: boolean): Promise<void> {
   const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;padding:40px;font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1e293b;line-height:1.6;';
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;padding:40px;font-family:"Be Vietnam Pro","Segoe UI",Roboto,Arial,sans-serif;color:#1e293b;line-height:1.7;';
 
-  // Build complete HTML content with Vietnamese support
+  // Build HTML keeping LaTeX delimiters intact for MathJax to process
   container.innerHTML = buildWorksheetHtml(worksheet, includeAnswers);
 
   document.body.appendChild(container);
 
-  // Wait for layout
-  await new Promise(r => setTimeout(r, 300));
+  // Wait for MathJax to typeset the new container
+  try {
+    if (window.MathJax?.typesetPromise) {
+      await window.MathJax.typesetPromise([container]);
+    } else if (window.MathJax?.startup?.promise) {
+      await window.MathJax.startup.promise;
+      if (window.MathJax?.typesetPromise) {
+        await window.MathJax.typesetPromise([container]);
+      }
+    }
+  } catch {
+    // MathJax may not be available, continue anyway
+  }
+
+  // Extra wait for MathJax SVG rendering to settle
+  await new Promise(r => setTimeout(r, 500));
 
   try {
     await captureAndSavePdf(container, worksheet);
   } finally {
+    // Clean up MathJax internal state for cloned elements
+    try {
+      if (window.MathJax && 'typesetClear' in window.MathJax) {
+        (window.MathJax as Record<string, unknown> & { typesetClear: (els: HTMLElement[]) => void }).typesetClear([container]);
+      }
+    } catch { /* ignore */ }
     document.body.removeChild(container);
   }
 }
@@ -96,7 +69,7 @@ async function captureAndSavePdf(element: HTMLElement, worksheet: Worksheet): Pr
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 8; // mm
+  const margin = 8;
 
   const usableWidth = pageWidth - 2 * margin;
   const imgWidth = canvas.width;
@@ -107,7 +80,6 @@ async function captureAndSavePdf(element: HTMLElement, worksheet: Worksheet): Pr
   if (scaledHeight <= pageHeight - 2 * margin) {
     pdf.addImage(imgData, 'PNG', margin, margin, usableWidth, scaledHeight);
   } else {
-    // Split across multiple pages
     const pageImgHeight = (pageHeight - 2 * margin) / ratio;
     let yOffset = 0;
 
@@ -134,31 +106,12 @@ async function captureAndSavePdf(element: HTMLElement, worksheet: Worksheet): Pr
 
 function escHtml(text: string): string {
   if (!text) return '';
+  // Preserve LaTeX delimiters ($...$, $$...$$) — only escape HTML tags
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function stripLatex(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/\$\$(.*?)\$\$/g, '$1')
-    .replace(/\$(.*?)\$/g, '$1')
-    .replace(/\\frac\{(.*?)\}\{(.*?)\}/g, '($1/$2)')
-    .replace(/\\sqrt\{(.*?)\}/g, '√($1)')
-    .replace(/\\times/g, '×')
-    .replace(/\\div/g, '÷')
-    .replace(/\\pm/g, '±')
-    .replace(/\\leq/g, '≤')
-    .replace(/\\geq/g, '≥')
-    .replace(/\\neq/g, '≠')
-    .replace(/\\text\{(.*?)\}/g, '$1')
-    .replace(/\^(\{.*?\}|\w)/g, (_, p) => `^${p.replace(/[{}]/g, '')}`)
-    .replace(/_(\{.*?\}|\w)/g, (_, p) => `_${p.replace(/[{}]/g, '')}`)
-    .replace(/\\\\/g, '')
-    .replace(/\\[a-zA-Z]+/g, '');
 }
 
 function buildWorksheetHtml(worksheet: Worksheet, includeAnswers: boolean): string {
@@ -188,21 +141,19 @@ function buildWorksheetHtml(worksheet: Worksheet, includeAnswers: boolean): stri
   html += `<p style="${infoStyle}">Môn: ${escHtml(worksheet.subjectName)} &nbsp;|&nbsp; Cấp: ${escHtml(GRADE_LEVEL_LABELS[worksheet.gradeLevel])} &nbsp;|&nbsp; ${worksheet.questions.length} câu</p>`;
   html += `<hr style="${dividerStyle}" />`;
 
-  // Questions
+  // Questions — keep LaTeX intact, MathJax will render them
   worksheet.questions.forEach((q, i) => {
     const typeLabel = QUESTION_TYPE_LABELS[q.type] || q.type;
     const diffLabel = DIFFICULTY_LABELS[q.difficulty] || q.difficulty;
-    const cleanContent = stripLatex(q.content);
 
     html += `<div style="${qBlockStyle}">`;
     html += `<div style="${qLabelStyle}">[${escHtml(typeLabel)}] [${escHtml(diffLabel)}]</div>`;
-    html += `<div style="${qContentStyle}">Câu ${i + 1}: ${escHtml(cleanContent)}</div>`;
+    html += `<div style="${qContentStyle}">Câu ${i + 1}: ${escHtml(q.content)}</div>`;
 
-    // Options (multiple_choice, counting, circle_odd, pattern_sequence, true_false)
     if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
       q.options.forEach((opt, j) => {
         const label = String.fromCharCode(65 + j);
-        html += `<div style="${optionStyle}">${label}. ${escHtml(stripLatex(opt))}</div>`;
+        html += `<div style="${optionStyle}">${label}. ${escHtml(opt)}</div>`;
       });
     }
 
@@ -210,26 +161,22 @@ function buildWorksheetHtml(worksheet: Worksheet, includeAnswers: boolean): stri
       html += `<div style="${optionStyle}">${q.options.map(o => escHtml(o)).join(' / ')}</div>`;
     }
 
-    // Matching pairs (matching, shadow_match, card_match)
     if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
       html += '<div style="padding-left:12px;margin-top:4px;">';
       html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
       q.matchingPairs.forEach((pair, j) => {
         html += `<tr>
-          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${j + 1}. ${escHtml(stripLatex(pair.left))}</td>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${j + 1}. ${escHtml(pair.left)}</td>
           <td style="padding:4px 8px;border:1px solid #e2e8f0;text-align:center;width:10%;">→</td>
-          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${String.fromCharCode(97 + j)}. ${escHtml(stripLatex(pair.right))}</td>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${String.fromCharCode(97 + j)}. ${escHtml(pair.right)}</td>
         </tr>`;
       });
       html += '</table></div>';
     }
 
-    // Fill blank hint
     if (q.type === 'fill_blank') {
       html += `<div style="${hintStyle}">[Chỗ trống để học sinh điền vào]</div>`;
     }
-
-    // Preschool activity hints
     if (q.type === 'coloring') {
       html += `<div style="${hintStyle}">🎨 [Bé hãy dùng bút sáp màu tô thật đẹp theo yêu cầu]</div>`;
     }
@@ -246,7 +193,6 @@ function buildWorksheetHtml(worksheet: Worksheet, includeAnswers: boolean): stri
     html += '</div>';
   });
 
-  // Answer key
   if (includeAnswers && worksheet.answerKey?.length) {
     html += buildAnswerKeyHtml(worksheet);
   }
@@ -264,9 +210,9 @@ function buildAnswerKeyHtml(worksheet: Worksheet): string {
 
   worksheet.answerKey.forEach(ak => {
     html += `<div style="${answerRowStyle}">`;
-    html += `<div style="${answerTextStyle}">Câu ${ak.questionIndex}: ${escHtml(stripLatex(ak.answer))}</div>`;
+    html += `<div style="${answerTextStyle}">Câu ${ak.questionIndex}: ${escHtml(ak.answer)}</div>`;
     if (ak.explanation) {
-      html += `<div style="${explanationStyle}">→ ${escHtml(stripLatex(ak.explanation))}</div>`;
+      html += `<div style="${explanationStyle}">→ ${escHtml(ak.explanation)}</div>`;
     }
     html += '</div>';
   });

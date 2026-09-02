@@ -3,6 +3,7 @@ import { QUESTION_TYPE_LABELS, GRADE_LEVEL_LABELS, DIFFICULTY_LABELS } from '../
 
 function escHtml(text: string): string {
   if (!text) return '';
+  // Preserve LaTeX delimiters ($...$) — only escape HTML tags
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -11,25 +12,7 @@ function escHtml(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function stripLatex(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/\$\$(.*?)\$\$/g, '$1')
-    .replace(/\$(.*?)\$/g, '$1')
-    .replace(/\\frac\{(.*?)\}\{(.*?)\}/g, '($1/$2)')
-    .replace(/\\sqrt\{(.*?)\}/g, '√($1)')
-    .replace(/\\times/g, '×')
-    .replace(/\\div/g, '÷')
-    .replace(/\\pm/g, '±')
-    .replace(/\\leq/g, '≤')
-    .replace(/\\geq/g, '≥')
-    .replace(/\\neq/g, '≠')
-    .replace(/\\text\{(.*?)\}/g, '$1')
-    .replace(/\^(\{.*?\}|\w)/g, (_, p) => `^${p.replace(/[{}]/g, '')}`)
-    .replace(/_(\{.*?\}|\w)/g, (_, p) => `_${p.replace(/[{}]/g, '')}`)
-    .replace(/\\\\/g, '')
-    .replace(/\\[a-zA-Z]+/g, '');
-}
+
 
 export function exportWorksheetToHtml(worksheet: Worksheet): void {
   const html = buildInteractiveHtml(worksheet);
@@ -48,14 +31,14 @@ function buildInteractiveHtml(ws: Worksheet): string {
   const questionsJson = JSON.stringify(ws.questions.map((q, i) => ({
     id: q.id,
     index: i,
-    content: stripLatex(q.content),
+    content: q.content, // Keep raw LaTeX
     type: q.type,
     typeLabel: QUESTION_TYPE_LABELS[q.type] || q.type,
     diffLabel: DIFFICULTY_LABELS[q.difficulty] || q.difficulty,
-    options: q.options?.map(o => stripLatex(o)) || [],
-    correctAnswer: stripLatex(q.correctAnswer),
-    explanation: q.explanation ? stripLatex(q.explanation) : '',
-    matchingPairs: q.matchingPairs?.map(p => ({ left: stripLatex(p.left), right: stripLatex(p.right) })) || [],
+    options: q.options || [],
+    correctAnswer: q.correctAnswer,
+    explanation: q.explanation || '',
+    matchingPairs: q.matchingPairs || [],
   })));
 
   const isPreschool = ws.gradeLevel === 'preschool';
@@ -66,6 +49,34 @@ function buildInteractiveHtml(ws: Worksheet): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escHtml(ws.title)} - Phiếu học tập tương tác</title>
+
+<!-- MathJax 3 for rendering math formulas -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$']],
+    displayMath: [['$$', '$$']],
+  },
+  svg: { fontCache: 'global' },
+  startup: {
+    typeset: false,
+    ready: function() {
+      MathJax.startup.defaultReady();
+      MathJax.startup.promise.then(function() {
+        // Typeset after questions are rendered
+        if (typeof renderAllQuestions === 'function') renderAllQuestions();
+      });
+    }
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+<!-- Google Font for Vietnamese -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -88,38 +99,24 @@ function buildInteractiveHtml(ws: Worksheet): string {
   --shadow:0 4px 24px rgba(0,0,0,.08);
 }
 body{
-  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  font-family:'Be Vietnam Pro','Segoe UI',system-ui,sans-serif;
   background:linear-gradient(135deg,var(--slate-50) 0%,var(--teal-light) 50%,var(--slate-50) 100%);
-  min-height:100vh;
-  color:var(--slate-700);
-  line-height:1.7;
-  padding:16px;
+  min-height:100vh;color:var(--slate-700);line-height:1.7;padding:16px;
 }
 .container{max-width:800px;margin:0 auto}
 
-/* Header */
 .header{
-  background:var(--white);
-  border-radius:var(--radius);
-  padding:28px 24px;
-  text-align:center;
-  box-shadow:var(--shadow);
-  margin-bottom:20px;
-  border:2px solid var(--teal-light);
-  position:relative;
-  overflow:hidden;
+  background:var(--white);border-radius:var(--radius);padding:28px 24px;
+  text-align:center;box-shadow:var(--shadow);margin-bottom:20px;
+  border:2px solid var(--teal-light);position:relative;overflow:hidden;
 }
-.header::before{
-  content:'';position:absolute;top:0;left:0;right:0;height:5px;
-  background:linear-gradient(90deg,var(--teal),var(--emerald),var(--blue));
-}
+.header::before{content:'';position:absolute;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,var(--teal),var(--emerald),var(--blue))}
 .school-name{font-size:12px;color:var(--slate-500);text-transform:uppercase;letter-spacing:2px;margin-bottom:4px}
 .main-title{font-size:${isPreschool ? '28px' : '24px'};font-weight:800;color:var(--teal);margin:8px 0}
 .sub-title{font-size:17px;font-weight:600;color:var(--slate-900)}
 .meta{display:flex;gap:16px;justify-content:center;margin-top:10px;flex-wrap:wrap}
 .meta span{font-size:12px;color:var(--slate-500);background:var(--slate-100);padding:3px 12px;border-radius:20px}
 
-/* Progress bar */
 .progress-bar-wrap{
   background:var(--white);border-radius:var(--radius);padding:16px 20px;
   box-shadow:var(--shadow);margin-bottom:20px;position:sticky;top:8px;z-index:100;
@@ -134,14 +131,10 @@ body{
 .stat-correct{color:var(--emerald);font-weight:600}
 .stat-wrong{color:var(--red);font-weight:600}
 
-/* Question Card */
 .q-card{
-  background:var(--white);
-  border-radius:var(--radius);
-  padding:${isPreschool ? '24px' : '20px'};
-  margin-bottom:14px;
-  box-shadow:var(--shadow);
-  border:2px solid transparent;
+  background:var(--white);border-radius:var(--radius);
+  padding:${isPreschool ? '24px' : '20px'};margin-bottom:14px;
+  box-shadow:var(--shadow);border:2px solid transparent;
   transition:border-color .3s,transform .2s;
 }
 .q-card:hover{transform:translateY(-1px)}
@@ -159,28 +152,28 @@ body{
 .q-content{font-size:${isPreschool ? '18px' : '15px'};font-weight:600;color:var(--slate-900);margin-bottom:12px;display:flex;align-items:flex-start}
 .q-content-text{flex:1}
 
-/* Options */
+/* MathJax inline SVG styling */
+.q-content mjx-container, .opt-btn mjx-container, .match-left mjx-container,
+.feedback mjx-container, .tf-btn mjx-container {
+  display:inline!important;
+  margin:0 2px;
+}
+
 .options-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 @media(max-width:600px){.options-grid{grid-template-columns:1fr}}
 .opt-btn{
   display:flex;align-items:center;gap:10px;
   padding:${isPreschool ? '14px 16px' : '11px 14px'};
-  border:2px solid var(--slate-300);
-  border-radius:12px;
-  background:var(--white);
-  cursor:pointer;
-  font-size:${isPreschool ? '16px' : '14px'};
-  color:var(--slate-700);
-  transition:all .2s;
-  text-align:left;
-  width:100%;
-  font-family:inherit;
-  line-height:1.5;
+  border:2px solid var(--slate-300);border-radius:12px;
+  background:var(--white);cursor:pointer;
+  font-size:${isPreschool ? '16px' : '14px'};color:var(--slate-700);
+  transition:all .2s;text-align:left;width:100%;
+  font-family:inherit;line-height:1.5;
 }
 .opt-btn:hover:not(.locked){border-color:var(--teal);background:var(--teal-light);transform:scale(1.01)}
 .opt-btn.selected{border-color:var(--teal);background:var(--teal-light);font-weight:600}
-.opt-btn.correct-answer{border-color:var(--emerald);background:var(--emerald-light);color:#065f46}
-.opt-btn.wrong-answer{border-color:var(--red);background:var(--red-light);color:#991b1b;text-decoration:line-through}
+.opt-btn.correct-answer{border-color:var(--emerald)!important;background:var(--emerald-light)!important;color:#065f46}
+.opt-btn.wrong-answer{border-color:var(--red)!important;background:var(--red-light)!important;color:#991b1b;text-decoration:line-through}
 .opt-btn.locked{cursor:default;opacity:.85}
 .opt-label{
   display:flex;align-items:center;justify-content:center;
@@ -191,7 +184,6 @@ body{
 .opt-btn.correct-answer .opt-label{background:var(--emerald);color:var(--white)}
 .opt-btn.wrong-answer .opt-label{background:var(--red);color:var(--white)}
 
-/* True/False */
 .tf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tf-btn{
   padding:14px;border:2px solid var(--slate-300);border-radius:12px;
@@ -200,11 +192,10 @@ body{
 }
 .tf-btn:hover:not(.locked){border-color:var(--teal);background:var(--teal-light)}
 .tf-btn.selected{border-color:var(--teal);background:var(--teal-light)}
-.tf-btn.correct-answer{border-color:var(--emerald);background:var(--emerald-light);color:#065f46}
-.tf-btn.wrong-answer{border-color:var(--red);background:var(--red-light);color:#991b1b}
+.tf-btn.correct-answer{border-color:var(--emerald)!important;background:var(--emerald-light)!important;color:#065f46}
+.tf-btn.wrong-answer{border-color:var(--red)!important;background:var(--red-light)!important;color:#991b1b}
 .tf-btn.locked{cursor:default}
 
-/* Fill blank */
 .fill-input{
   width:100%;padding:12px 16px;border:2px solid var(--slate-300);
   border-radius:12px;font-size:15px;font-family:inherit;
@@ -221,7 +212,6 @@ body{
 .fill-submit:hover{transform:scale(1.03)}
 .fill-submit:disabled{opacity:.5;cursor:default;transform:none}
 
-/* Matching */
 .match-container{display:flex;flex-direction:column;gap:8px}
 .match-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .match-left{
@@ -245,14 +235,12 @@ body{
 }
 .match-check:disabled{opacity:.5;cursor:default}
 
-/* Short answer / textarea */
 .text-area{
   width:100%;min-height:80px;padding:12px;border:2px solid var(--slate-300);
   border-radius:12px;font-size:14px;font-family:inherit;resize:vertical;outline:none;
 }
 .text-area:focus{border-color:var(--teal)}
 
-/* Preschool activity */
 .activity-hint{
   display:flex;align-items:center;gap:10px;padding:14px 18px;
   background:${isPreschool ? '#fef3c7' : 'var(--teal-light)'};border-radius:12px;
@@ -267,7 +255,6 @@ body{
 .activity-done-btn:hover{background:var(--teal-light);border-style:solid}
 .activity-done-btn.done{background:var(--emerald-light);border-color:var(--emerald);color:#065f46;border-style:solid}
 
-/* Feedback */
 .feedback{
   margin-top:10px;padding:10px 14px;border-radius:10px;
   font-size:13px;animation:fadeIn .3s ease;
@@ -277,7 +264,6 @@ body{
 .feedback strong{display:block;margin-bottom:2px}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 
-/* Footer / Summary */
 .summary-card{
   background:var(--white);border-radius:var(--radius);padding:28px;
   box-shadow:var(--shadow);margin-top:24px;text-align:center;
@@ -298,18 +284,10 @@ body{
 }
 .retry-btn:hover{transform:scale(1.04)}
 
-/* Confetti */
 .confetti-wrap{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;overflow:hidden}
-.confetti-piece{
-  position:absolute;width:10px;height:10px;top:-20px;
-  animation:confettiFall 3s ease-in forwards;
-}
-@keyframes confettiFall{
-  0%{transform:translateY(0) rotate(0deg);opacity:1}
-  100%{transform:translateY(100vh) rotate(720deg);opacity:0}
-}
+.confetti-piece{position:absolute;width:10px;height:10px;top:-20px;animation:confettiFall 3s ease-in forwards}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
 
-/* Print */
 @media print{
   .progress-bar-wrap,.retry-btn,.fill-submit,.match-check,.activity-done-btn{display:none!important}
   body{background:#fff;padding:0}
@@ -319,7 +297,6 @@ body{
 </head>
 <body>
 <div class="container">
-  <!-- Header -->
   <div class="header">
     ${ws.schoolName ? `<div class="school-name">${escHtml(ws.schoolName)}</div>` : ''}
     ${ws.className ? `<div style="font-size:12px;color:#94a3b8">${escHtml(ws.className)}</div>` : ''}
@@ -332,7 +309,6 @@ body{
     </div>
   </div>
 
-  <!-- Progress -->
   <div class="progress-bar-wrap">
     <div class="progress-top">
       <span class="progress-label">Tiến độ làm bài</span>
@@ -346,10 +322,8 @@ body{
     </div>
   </div>
 
-  <!-- Questions -->
   <div id="questionsContainer"></div>
 
-  <!-- Summary -->
   <div class="summary-card" id="summaryCard">
     <div style="font-size:32px">${isPreschool ? '🎊🌟🎊' : '🎉'}</div>
     <h2 style="color:var(--teal);margin:8px 0">${isPreschool ? 'Bé giỏi lắm!' : 'Hoàn thành!'}</h2>
@@ -365,330 +339,307 @@ body{
 </div>
 
 <script>
-(function(){
-  var questions = ${questionsJson};
-  var total = questions.length;
-  var answered = 0, correct = 0, wrong = 0;
-  var states = {};
+// Questions data with raw LaTeX content preserved
+var questions = ${questionsJson};
+var total = questions.length;
+var answered = 0, correct = 0, wrong = 0;
+var states = {};
+var container = document.getElementById('questionsContainer');
 
-  var container = document.getElementById('questionsContainer');
+function escH(s){
+  if(!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
-  function updateProgress(){
-    document.getElementById('scoreText').textContent = answered+'/'+total;
-    document.getElementById('progressFill').style.width = (answered/total*100)+'%';
-    document.getElementById('correctCount').textContent = correct;
-    document.getElementById('wrongCount').textContent = wrong;
-    document.getElementById('remainCount').textContent = (total-answered);
-    if(answered===total) showSummary();
+function updateProgress(){
+  document.getElementById('scoreText').textContent = answered+'/'+total;
+  document.getElementById('progressFill').style.width = (answered/total*100)+'%';
+  document.getElementById('correctCount').textContent = correct;
+  document.getElementById('wrongCount').textContent = wrong;
+  document.getElementById('remainCount').textContent = (total-answered);
+  if(answered===total) showSummary();
+}
+
+function showFeedback(qEl,isCorrect,correctAns,explanation){
+  var fb = document.createElement('div');
+  fb.className = 'feedback '+(isCorrect?'correct':'wrong');
+  if(isCorrect){
+    fb.innerHTML='<strong>${isPreschool ? '🌟 Giỏi lắm!' : '✅ Chính xác!'}</strong>'+(explanation?escH(explanation):'');
+  } else {
+    fb.innerHTML='<strong>❌ Chưa đúng</strong>Đáp án: '+escH(correctAns)+(explanation?' — '+escH(explanation):'');
   }
+  qEl.appendChild(fb);
+  // Typeset MathJax in feedback
+  typesetElement(fb);
+}
 
-  function showFeedback(qEl,isCorrect,correctAns,explanation){
-    var fb = document.createElement('div');
-    fb.className = 'feedback '+(isCorrect?'correct':'wrong');
-    if(isCorrect){
-      fb.innerHTML='<strong>${isPreschool ? '🌟 Giỏi lắm!' : '✅ Chính xác!'}</strong>'+(explanation?explanation:'');
-    } else {
-      fb.innerHTML='<strong>❌ Chưa đúng</strong>Đáp án: '+correctAns+(explanation?' — '+explanation:'');
-    }
-    qEl.appendChild(fb);
+function typesetElement(el){
+  if(window.MathJax && window.MathJax.typesetPromise){
+    window.MathJax.typesetPromise([el]).catch(function(){});
   }
+}
 
-  function showSummary(){
-    var pct = Math.round(correct/total*100);
-    document.getElementById('summaryScore').textContent = pct+'%';
-    document.getElementById('sumCorrect').textContent = correct;
-    document.getElementById('sumWrong').textContent = wrong;
-    var msg = '';
-    if(pct===100) msg='${isPreschool ? '🏆 Xuất sắc! Bé giỏi nhất lớp!' : '🏆 Hoàn hảo! Xuất sắc!'}';
-    else if(pct>=80) msg='${isPreschool ? '⭐ Bé làm rất giỏi!' : '⭐ Rất tốt!'}';
-    else if(pct>=60) msg='${isPreschool ? '👍 Bé cần cố gắng thêm nhé!' : '👍 Khá tốt, cần ôn tập thêm.'}';
-    else msg='${isPreschool ? '💪 Cố lên bé nhé!' : '📖 Cần ôn tập lại kiến thức.'}';
-    document.getElementById('summaryMessage').textContent = msg;
-    document.getElementById('summaryCard').classList.add('visible');
-    if(pct>=80) launchConfetti();
-    document.getElementById('summaryCard').scrollIntoView({behavior:'smooth',block:'center'});
+function showSummary(){
+  var pct = Math.round(correct/total*100);
+  document.getElementById('summaryScore').textContent = pct+'%';
+  document.getElementById('sumCorrect').textContent = correct;
+  document.getElementById('sumWrong').textContent = wrong;
+  var msg = '';
+  if(pct===100) msg='${isPreschool ? '🏆 Xuất sắc! Bé giỏi nhất lớp!' : '🏆 Hoàn hảo! Xuất sắc!'}';
+  else if(pct>=80) msg='${isPreschool ? '⭐ Bé làm rất giỏi!' : '⭐ Rất tốt!'}';
+  else if(pct>=60) msg='${isPreschool ? '👍 Bé cần cố gắng thêm nhé!' : '👍 Khá tốt, cần ôn tập thêm.'}';
+  else msg='${isPreschool ? '💪 Cố lên bé nhé!' : '📖 Cần ôn tập lại kiến thức.'}';
+  document.getElementById('summaryMessage').textContent = msg;
+  document.getElementById('summaryCard').classList.add('visible');
+  if(pct>=80) launchConfetti();
+  document.getElementById('summaryCard').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function launchConfetti(){
+  var wrap=document.createElement('div');wrap.className='confetti-wrap';document.body.appendChild(wrap);
+  var colors=['#0d9488','#059669','#3b82f6','#f59e0b','#ef4444','#ec4899','#8b5cf6'];
+  for(var i=0;i<60;i++){
+    var p=document.createElement('div');p.className='confetti-piece';
+    p.style.left=Math.random()*100+'%';
+    p.style.background=colors[Math.floor(Math.random()*colors.length)];
+    p.style.animationDelay=Math.random()*2+'s';
+    p.style.borderRadius=Math.random()>.5?'50%':'2px';
+    p.style.width=(6+Math.random()*8)+'px';
+    p.style.height=(6+Math.random()*8)+'px';
+    wrap.appendChild(p);
   }
+  setTimeout(function(){wrap.remove()},4000);
+}
 
-  function launchConfetti(){
-    var wrap=document.createElement('div');wrap.className='confetti-wrap';document.body.appendChild(wrap);
-    var colors=['#0d9488','#059669','#3b82f6','#f59e0b','#ef4444','#ec4899','#8b5cf6'];
-    for(var i=0;i<60;i++){
-      var p=document.createElement('div');p.className='confetti-piece';
-      p.style.left=Math.random()*100+'%';
-      p.style.background=colors[Math.floor(Math.random()*colors.length)];
-      p.style.animationDelay=Math.random()*2+'s';
-      p.style.borderRadius=Math.random()>.5?'50%':'2px';
-      p.style.width=(6+Math.random()*8)+'px';
-      p.style.height=(6+Math.random()*8)+'px';
-      wrap.appendChild(p);
-    }
-    setTimeout(function(){wrap.remove()},4000);
-  }
-
-  // Render questions
+// Build all question cards
+function renderAllQuestions(){
+  container.innerHTML = '';
   questions.forEach(function(q,idx){
     var card = document.createElement('div');
     card.className = 'q-card';
     card.id = 'q-'+idx;
 
-    var badge = '<div class="q-badge"><span>'+q.typeLabel+'</span><span>'+q.diffLabel+'</span></div>';
+    var badge = '<div class="q-badge"><span>'+escH(q.typeLabel)+'</span><span>'+escH(q.diffLabel)+'</span></div>';
     var content = '<div class="q-content"><span class="q-number">'+(idx+1)+'</span><span class="q-content-text">'+escH(q.content)+'</span></div>';
-
     var body = '';
 
     switch(q.type){
-      case 'multiple_choice':
-      case 'counting':
-      case 'circle_odd':
-      case 'pattern_sequence':
-        body = renderOptions(q, idx);
-        break;
+      case 'multiple_choice': case 'counting': case 'circle_odd': case 'pattern_sequence':
+        body = renderOptions(q,idx); break;
       case 'true_false':
-        body = renderTrueFalse(q, idx);
-        break;
+        body = renderTrueFalse(q,idx); break;
       case 'fill_blank':
-        body = renderFillBlank(q, idx);
-        break;
-      case 'matching':
-      case 'shadow_match':
-      case 'card_match':
-        body = renderMatching(q, idx);
-        break;
-      case 'short_answer':
-      case 'extended_writing':
-      case 'situation':
-      case 'find_error':
-      case 'compare':
-      case 'mind_map':
-      case 'role_play':
-      case 'chart_analysis':
-      case 'mini_project':
-      case 'self_assess':
-        body = renderTextAnswer(q, idx);
-        break;
+        body = renderFillBlank(q,idx); break;
+      case 'matching': case 'shadow_match': case 'card_match':
+        body = renderMatching(q,idx); break;
       case 'coloring':
-        body = renderActivity(q, idx, '🎨', 'Bé hãy dùng bút sáp màu tô thật đẹp theo yêu cầu!');
-        break;
+        body = renderActivity(idx,'🎨','Bé hãy dùng bút sáp màu tô thật đẹp theo yêu cầu!'); break;
       case 'dot_to_dot':
-        body = renderActivity(q, idx, '✏️', 'Bé hãy nối các điểm theo thứ tự số 1 → 2 → 3...');
-        break;
+        body = renderActivity(idx,'✏️','Bé hãy nối các điểm theo thứ tự số 1 → 2 → 3...'); break;
       case 'maze':
-        body = renderActivity(q, idx, '🌀', 'Bé hãy vẽ đường đi vượt qua mê cung!');
-        break;
+        body = renderActivity(idx,'🌀','Bé hãy vẽ đường đi vượt qua mê cung!'); break;
       case 'tracing':
-        body = renderActivity(q, idx, '✍️', 'Bé hãy cầm bút đồ theo đúng các nét đứt!');
-        break;
+        body = renderActivity(idx,'✍️','Bé hãy cầm bút đồ theo đúng các nét đứt!'); break;
       default:
-        body = renderTextAnswer(q, idx);
+        body = renderTextAnswer(idx);
     }
 
     card.innerHTML = badge + content + body;
     container.appendChild(card);
-
-    // Attach event listeners after DOM insert
     attachListeners(q, idx, card);
   });
 
-  function escH(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  // Typeset all MathJax in questions
+  typesetElement(container);
+  updateProgress();
+}
 
-  function renderOptions(q, idx){
-    var html='<div class="options-grid">';
-    q.options.forEach(function(opt,j){
-      var label = String.fromCharCode(65+j);
-      html+='<button class="opt-btn" data-q="'+idx+'" data-val="'+label+'" data-idx="'+j+'"><span class="opt-label">'+label+'</span><span>'+escH(opt)+'</span></button>';
-    });
-    html+='</div>';
-    return html;
-  }
+function renderOptions(q, idx){
+  var html='<div class="options-grid">';
+  q.options.forEach(function(opt,j){
+    var label = String.fromCharCode(65+j);
+    html+='<button class="opt-btn" data-q="'+idx+'" data-val="'+label+'" data-idx="'+j+'"><span class="opt-label">'+label+'</span><span>'+escH(opt)+'</span></button>';
+  });
+  return html+'</div>';
+}
 
-  function renderTrueFalse(q, idx){
-    var opts = q.options.length ? q.options : ['Đúng','Sai'];
-    var html='<div class="tf-grid">';
-    opts.forEach(function(opt,j){
-      html+='<button class="tf-btn" data-q="'+idx+'" data-val="'+escH(opt)+'">'+(j===0?'✅ ':'❌ ')+escH(opt)+'</button>';
-    });
-    html+='</div>';
-    return html;
-  }
+function renderTrueFalse(q, idx){
+  var opts = q.options && q.options.length ? q.options : ['Đúng','Sai'];
+  var html='<div class="tf-grid">';
+  opts.forEach(function(opt,j){
+    html+='<button class="tf-btn" data-q="'+idx+'" data-val="'+escH(opt)+'">'+(j===0?'✅ ':'❌ ')+escH(opt)+'</button>';
+  });
+  return html+'</div>';
+}
 
-  function renderFillBlank(q, idx){
-    return '<div><input class="fill-input" id="fill-'+idx+'" placeholder="Nhập câu trả lời..." /><button class="fill-submit" data-q="'+idx+'">Kiểm tra</button></div>';
-  }
+function renderFillBlank(q, idx){
+  return '<div><input class="fill-input" id="fill-'+idx+'" placeholder="Nhập câu trả lời..." /><button class="fill-submit" data-q="'+idx+'">Kiểm tra</button></div>';
+}
 
-  function renderMatching(q, idx){
-    if(!q.matchingPairs.length) return renderTextAnswer(q,idx);
-    var shuffled = q.matchingPairs.map(function(p,i){return{text:p.right,origIdx:i}});
-    for(var i=shuffled.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=shuffled[i];shuffled[i]=shuffled[j];shuffled[j]=t;}
-    var html='<div class="match-container">';
-    q.matchingPairs.forEach(function(pair,j){
-      html+='<div class="match-row"><div class="match-left">'+(j+1)+'. '+escH(pair.left)+'</div>';
-      html+='<span class="match-arrow">→</span>';
-      html+='<select class="match-select" data-q="'+idx+'" data-pair="'+j+'"><option value="">Chọn...</option>';
-      shuffled.forEach(function(s){
-        html+='<option value="'+escH(s.text)+'">'+escH(s.text)+'</option>';
+function renderMatching(q, idx){
+  if(!q.matchingPairs || !q.matchingPairs.length) return renderTextAnswer(idx);
+  var shuffled = q.matchingPairs.map(function(p,i){return{text:p.right,origIdx:i}});
+  for(var i=shuffled.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=shuffled[i];shuffled[i]=shuffled[j];shuffled[j]=t;}
+  var html='<div class="match-container">';
+  q.matchingPairs.forEach(function(pair,j){
+    html+='<div class="match-row"><div class="match-left">'+(j+1)+'. '+escH(pair.left)+'</div>';
+    html+='<span class="match-arrow">→</span>';
+    html+='<select class="match-select" data-q="'+idx+'" data-pair="'+j+'"><option value="">Chọn...</option>';
+    shuffled.forEach(function(s){ html+='<option value="'+escH(s.text)+'">'+escH(s.text)+'</option>'; });
+    html+='</select></div>';
+  });
+  html+='<button class="match-check" data-q="'+idx+'">Kiểm tra nối</button></div>';
+  return html;
+}
+
+function renderTextAnswer(idx){
+  return '<div><textarea class="text-area" id="text-'+idx+'" placeholder="${isPreschool ? 'Bé viết câu trả lời...' : 'Viết câu trả lời...'}"></textarea><button class="fill-submit" data-q="'+idx+'" data-type="text">Kiểm tra</button></div>';
+}
+
+function renderActivity(idx, emoji, hint){
+  return '<div class="activity-hint">'+emoji+' '+hint+'</div><button class="activity-done-btn" data-q="'+idx+'">${isPreschool ? '⭐ Bé đã làm xong!' : '✅ Đã hoàn thành!'}</button>';
+}
+
+function attachListeners(q, idx, card){
+  // Multiple choice
+  if(['multiple_choice','counting','circle_odd','pattern_sequence'].indexOf(q.type)!==-1){
+    var btns = card.querySelectorAll('.opt-btn');
+    btns.forEach(function(btn){
+      btn.addEventListener('click',function(){
+        if(states[idx]) return; states[idx]=true; answered++;
+        var val = btn.getAttribute('data-val');
+        var correctLetter = q.correctAnswer.trim().toUpperCase().charAt(0);
+        var isRight = val===correctLetter;
+        if(isRight) correct++; else wrong++;
+        btns.forEach(function(b){
+          b.classList.add('locked');
+          var bVal = b.getAttribute('data-val');
+          if(bVal===correctLetter) b.classList.add('correct-answer');
+          if(bVal===val && !isRight) b.classList.add('wrong-answer');
+        });
+        card.classList.add(isRight?'correct':'wrong','answered');
+        showFeedback(card,isRight,correctLetter+'. '+(q.options[correctLetter.charCodeAt(0)-65]||''),q.explanation);
+        updateProgress();
       });
-      html+='</select></div>';
     });
-    html+='<button class="match-check" data-q="'+idx+'">Kiểm tra nối</button>';
-    html+='</div>';
-    return html;
   }
 
-  function renderTextAnswer(q, idx){
-    return '<div><textarea class="text-area" id="text-'+idx+'" placeholder="${isPreschool ? 'Bé viết câu trả lời...' : 'Viết câu trả lời...'}"></textarea><button class="fill-submit" data-q="'+idx+'" data-type="text">Kiểm tra</button></div>';
-  }
-
-  function renderActivity(q, idx, emoji, hint){
-    return '<div class="activity-hint">'+emoji+' '+hint+'</div><button class="activity-done-btn" data-q="'+idx+'">${isPreschool ? '⭐ Bé đã làm xong!' : '✅ Đã hoàn thành!'}</button>';
-  }
-
-  function attachListeners(q, idx, card){
-    // Multiple choice / counting / circle_odd / pattern_sequence
-    if(['multiple_choice','counting','circle_odd','pattern_sequence'].includes(q.type)){
-      var btns = card.querySelectorAll('.opt-btn');
-      btns.forEach(function(btn){
-        btn.addEventListener('click',function(){
-          if(states[idx]) return;
-          states[idx]=true;
-          answered++;
-          var val = btn.getAttribute('data-val');
-          var correctLetter = q.correctAnswer.trim().toUpperCase().charAt(0);
-          var isRight = val===correctLetter;
-          if(isRight) correct++; else wrong++;
-
-          btns.forEach(function(b){
-            b.classList.add('locked');
-            var bVal = b.getAttribute('data-val');
-            if(bVal===correctLetter) b.classList.add('correct-answer');
-            if(bVal===val && !isRight) b.classList.add('wrong-answer');
-          });
-          card.classList.add(isRight?'correct':'wrong','answered');
-          showFeedback(card,isRight,correctLetter+'. '+q.options[correctLetter.charCodeAt(0)-65],q.explanation);
-          updateProgress();
+  // True/False
+  if(q.type==='true_false'){
+    var tfBtns = card.querySelectorAll('.tf-btn');
+    tfBtns.forEach(function(btn){
+      btn.addEventListener('click',function(){
+        if(states[idx]) return; states[idx]=true; answered++;
+        var val = btn.getAttribute('data-val');
+        var correctVal = q.correctAnswer.trim();
+        var isRight = val.toLowerCase()===correctVal.toLowerCase();
+        if(isRight) correct++; else wrong++;
+        tfBtns.forEach(function(b){
+          b.classList.add('locked');
+          if(b.getAttribute('data-val').toLowerCase()===correctVal.toLowerCase()) b.classList.add('correct-answer');
+          if(b.getAttribute('data-val')===val && !isRight) b.classList.add('wrong-answer');
         });
+        card.classList.add(isRight?'correct':'wrong','answered');
+        showFeedback(card,isRight,correctVal,q.explanation);
+        updateProgress();
       });
-    }
+    });
+  }
 
-    // True/False
-    if(q.type==='true_false'){
-      var tfBtns = card.querySelectorAll('.tf-btn');
-      tfBtns.forEach(function(btn){
-        btn.addEventListener('click',function(){
-          if(states[idx]) return;
-          states[idx]=true;
-          answered++;
-          var val = btn.getAttribute('data-val');
-          var correctVal = q.correctAnswer.trim();
-          var isRight = val.toLowerCase()===correctVal.toLowerCase();
-          if(isRight) correct++; else wrong++;
-          tfBtns.forEach(function(b){
-            b.classList.add('locked');
-            if(b.getAttribute('data-val').toLowerCase()===correctVal.toLowerCase()) b.classList.add('correct-answer');
-            if(b.getAttribute('data-val')===val && !isRight) b.classList.add('wrong-answer');
-          });
-          card.classList.add(isRight?'correct':'wrong','answered');
-          showFeedback(card,isRight,correctVal,q.explanation);
-          updateProgress();
-        });
-      });
-    }
-
-    // Fill blank
-    if(q.type==='fill_blank'){
-      var fbtn = card.querySelector('.fill-submit');
-      if(fbtn && !fbtn.getAttribute('data-type')){
-        fbtn.addEventListener('click',function(){
-          if(states[idx]) return;
-          var input = document.getElementById('fill-'+idx);
-          var val = input.value.trim();
-          if(!val) return;
-          states[idx]=true;
-          answered++;
-          var isRight = val.toLowerCase()===q.correctAnswer.trim().toLowerCase();
-          if(isRight) correct++; else wrong++;
-          input.classList.add(isRight?'correct':'wrong');
-          input.disabled=true;
-          fbtn.disabled=true;
-          card.classList.add(isRight?'correct':'wrong','answered');
-          showFeedback(card,isRight,q.correctAnswer,q.explanation);
-          updateProgress();
-        });
-      }
-    }
-
-    // Matching
-    if(['matching','shadow_match','card_match'].includes(q.type) && q.matchingPairs.length){
-      var mBtn = card.querySelector('.match-check');
-      if(mBtn){
-        mBtn.addEventListener('click',function(){
-          if(states[idx]) return;
-          var selects = card.querySelectorAll('.match-select');
-          var allFilled = true;
-          selects.forEach(function(s){if(!s.value) allFilled=false;});
-          if(!allFilled) return;
-          states[idx]=true;
-          answered++;
-          var allCorrect = true;
-          selects.forEach(function(s,j){
-            var rightVal = q.matchingPairs[j].right;
-            s.disabled = true;
-            if(s.value===rightVal){
-              s.classList.add('correct');
-            } else {
-              s.classList.add('wrong');
-              allCorrect = false;
-            }
-          });
-          if(allCorrect) correct++; else wrong++;
-          mBtn.disabled = true;
-          card.classList.add(allCorrect?'correct':'wrong','answered');
-          var correctPairs = q.matchingPairs.map(function(p,j){return (j+1)+'.'+p.left+' → '+p.right}).join('; ');
-          showFeedback(card,allCorrect,correctPairs,q.explanation);
-          updateProgress();
-        });
-      }
-    }
-
-    // Text / Short answer
-    var textBtn = card.querySelector('.fill-submit[data-type="text"]');
-    if(textBtn){
-      textBtn.addEventListener('click',function(){
+  // Fill blank
+  if(q.type==='fill_blank'){
+    var fbtn = card.querySelector('.fill-submit:not([data-type])');
+    if(fbtn){
+      fbtn.addEventListener('click',function(){
         if(states[idx]) return;
-        var ta = document.getElementById('text-'+idx);
-        var val = ta.value.trim();
+        var input = document.getElementById('fill-'+idx);
+        var val = input.value.trim();
         if(!val) return;
-        states[idx]=true;
-        answered++;
-        // For text answers, always count as correct (teacher grades)
-        correct++;
-        ta.disabled=true;
-        textBtn.disabled=true;
-        card.classList.add('correct','answered');
-        showFeedback(card,true,'','Đã ghi nhận câu trả lời. Đáp án tham khảo: '+q.correctAnswer);
+        states[idx]=true; answered++;
+        var isRight = val.toLowerCase()===q.correctAnswer.trim().toLowerCase();
+        if(isRight) correct++; else wrong++;
+        input.classList.add(isRight?'correct':'wrong');
+        input.disabled=true; fbtn.disabled=true;
+        card.classList.add(isRight?'correct':'wrong','answered');
+        showFeedback(card,isRight,q.correctAnswer,q.explanation);
         updateProgress();
       });
     }
+  }
 
-    // Activity (coloring, dot_to_dot, maze, tracing)
-    if(['coloring','dot_to_dot','maze','tracing'].includes(q.type)){
-      var actBtn = card.querySelector('.activity-done-btn');
-      if(actBtn){
-        actBtn.addEventListener('click',function(){
-          if(states[idx]) return;
-          states[idx]=true;
-          answered++;
-          correct++;
-          actBtn.classList.add('done');
-          actBtn.textContent = '${isPreschool ? '🌟 Giỏi lắm!' : '✅ Đã hoàn thành!'}';
-          card.classList.add('correct','answered');
-          updateProgress();
+  // Matching
+  if(['matching','shadow_match','card_match'].indexOf(q.type)!==-1 && q.matchingPairs && q.matchingPairs.length){
+    var mBtn = card.querySelector('.match-check');
+    if(mBtn){
+      mBtn.addEventListener('click',function(){
+        if(states[idx]) return;
+        var selects = card.querySelectorAll('.match-select');
+        var allFilled = true;
+        selects.forEach(function(s){if(!s.value) allFilled=false;});
+        if(!allFilled) return;
+        states[idx]=true; answered++;
+        var allCorrect = true;
+        selects.forEach(function(s,j){
+          s.disabled = true;
+          if(s.value===q.matchingPairs[j].right){ s.classList.add('correct'); }
+          else { s.classList.add('wrong'); allCorrect = false; }
         });
-      }
+        if(allCorrect) correct++; else wrong++;
+        mBtn.disabled = true;
+        card.classList.add(allCorrect?'correct':'wrong','answered');
+        var correctPairs = q.matchingPairs.map(function(p,j){return (j+1)+'. '+p.left+' → '+p.right}).join('; ');
+        showFeedback(card,allCorrect,correctPairs,q.explanation);
+        updateProgress();
+      });
     }
   }
 
-  updateProgress();
-})();
+  // Text / Short answer
+  var textBtn = card.querySelector('.fill-submit[data-type="text"]');
+  if(textBtn){
+    textBtn.addEventListener('click',function(){
+      if(states[idx]) return;
+      var ta = document.getElementById('text-'+idx);
+      var val = ta.value.trim();
+      if(!val) return;
+      states[idx]=true; answered++; correct++;
+      ta.disabled=true; textBtn.disabled=true;
+      card.classList.add('correct','answered');
+      showFeedback(card,true,'','Đã ghi nhận câu trả lời. Đáp án tham khảo: '+q.correctAnswer);
+      updateProgress();
+    });
+  }
+
+  // Activity (coloring, dot_to_dot, maze, tracing)
+  if(['coloring','dot_to_dot','maze','tracing'].indexOf(q.type)!==-1){
+    var actBtn = card.querySelector('.activity-done-btn');
+    if(actBtn){
+      actBtn.addEventListener('click',function(){
+        if(states[idx]) return;
+        states[idx]=true; answered++; correct++;
+        actBtn.classList.add('done');
+        actBtn.textContent = '${isPreschool ? '🌟 Giỏi lắm!' : '✅ Đã hoàn thành!'}';
+        card.classList.add('correct','answered');
+        updateProgress();
+      });
+    }
+  }
+}
+
+// Initial render — if MathJax is already loaded, render immediately
+// Otherwise, the MathJax startup.ready callback will call renderAllQuestions
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', function(){
+    if(window.MathJax && window.MathJax.typesetPromise){
+      renderAllQuestions();
+    } else {
+      // MathJax not loaded yet — render HTML first, MathJax will typeset on load
+      renderAllQuestions();
+    }
+  });
+} else {
+  renderAllQuestions();
+}
 </script>
 </body>
 </html>`;
