@@ -2,6 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 import type { Worksheet } from '../types';
 import { QUESTION_TYPE_LABELS, GRADE_LEVEL_LABELS, DIFFICULTY_LABELS } from '../types';
+import { getAnswerKeyText, getAnswerMode, getDisplayOptions, getMatchingLabel, getMatchingRightOrder, getOptionLabel } from './answerKey';
 
 export async function exportWorksheetToWord(
   worksheet: Worksheet,
@@ -84,9 +85,9 @@ export async function exportWorksheetToWord(
     );
 
     // Options (for multiple_choice, counting, circle_odd, pattern_sequence)
-    if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
-      q.options.forEach((opt, j) => {
-        const label = String.fromCharCode(65 + j);
+    if (getAnswerMode(q) === 'options') {
+      getDisplayOptions(q).forEach((opt, j) => {
+        const label = getOptionLabel(j);
         children.push(
           new Paragraph({
             children: [new TextRun({ text: `    ${label}. ${opt}`, size: 20 })],
@@ -97,10 +98,10 @@ export async function exportWorksheetToWord(
     }
 
     // True/False
-    if (q.type === 'true_false' && q.options) {
+    if (q.type === 'true_false') {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: `    ${q.options.join(' / ')}`, size: 20 })],
+          children: [new TextRun({ text: `    ${getDisplayOptions(q).join(' / ')}`, size: 20 })],
           spacing: { after: 40 },
         })
       );
@@ -154,7 +155,9 @@ export async function exportWorksheetToWord(
     }
 
     // Matching pairs as table (for matching, shadow_match, card_match)
-    if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
+    if (getAnswerMode(q) === 'matching' && q.matchingPairs) {
+      const pairs = q.matchingPairs;
+      const rightOrder = getMatchingRightOrder(q);
       const colALabel = q.type === 'shadow_match' ? 'Hình ảnh' : 'Cột A';
       const colBLabel = q.type === 'shadow_match' ? 'Bóng / Ghép đôi' : 'Cột B';
       const tableRows = [
@@ -170,14 +173,14 @@ export async function exportWorksheetToWord(
             }),
           ],
         }),
-        ...q.matchingPairs.map((pair, j) =>
+        ...pairs.map((pair, j) =>
           new TableRow({
             children: [
               new TableCell({
                 children: [new Paragraph({ children: [new TextRun({ text: `${j + 1}. ${pair.left}`, size: 20 })] })],
               }),
               new TableCell({
-                children: [new Paragraph({ children: [new TextRun({ text: `${String.fromCharCode(97 + j)}. ${pair.right}`, size: 20 })] })],
+                children: [new Paragraph({ children: [new TextRun({ text: `${getMatchingLabel(j)}. ${pairs[rightOrder[j]].right}`, size: 20 })] })],
               }),
             ],
           })
@@ -215,7 +218,7 @@ export async function exportWorksheetToWord(
         new Paragraph({
           children: [
             new TextRun({ text: `Câu ${ak.questionIndex}: `, bold: true, size: 20 }),
-            new TextRun({ text: ak.answer, size: 20 }),
+            new TextRun({ text: getAnswerKeyText(worksheet, ak), size: 20 }),
           ],
           spacing: { after: 40 },
         })

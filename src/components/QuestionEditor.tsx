@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save } from 'lucide-react';
 import type { Question, QuestionType, Difficulty } from '../types';
 import { QUESTION_TYPE_LABELS, DIFFICULTY_LABELS } from '../types';
+import { getCorrectOptionIndex, getDisplayOptions, getOptionLabel } from '../utils/answerKey';
+
+const OPTION_TYPES: QuestionType[] = ['multiple_choice', 'true_false', 'counting', 'circle_odd', 'pattern_sequence'];
+
+function getInitialOptions(question: Question): string[] {
+    const options = getDisplayOptions(question);
+    return options.length > 0 ? options : ['', '', '', ''];
+}
 
 interface Props {
     question: Question;
@@ -15,7 +23,8 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
     const [difficulty, setDifficulty] = useState<Difficulty>(question.difficulty);
     const [correctAnswer, setCorrectAnswer] = useState(question.correctAnswer);
     const [explanation, setExplanation] = useState(question.explanation || '');
-    const [options, setOptions] = useState<string[]>(question.options || ['', '', '', '']);
+    const [options, setOptions] = useState<string[]>(getInitialOptions(question));
+    const [correctIndex, setCorrectIndex] = useState(getCorrectOptionIndex(question));
     const [matchingPairs, setMatchingPairs] = useState(
         question.matchingPairs || [{ left: '', right: '' }]
     );
@@ -26,22 +35,38 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
         setDifficulty(question.difficulty);
         setCorrectAnswer(question.correctAnswer);
         setExplanation(question.explanation || '');
-        setOptions(question.options || ['', '', '', '']);
+        setOptions(getInitialOptions(question));
+        setCorrectIndex(getCorrectOptionIndex(question));
         setMatchingPairs(question.matchingPairs || [{ left: '', right: '' }]);
     }, [question]);
 
-    const hasOptions = ['multiple_choice', 'true_false', 'counting', 'circle_odd', 'pattern_sequence'].includes(type);
+    const hasOptions = OPTION_TYPES.includes(type);
     const hasMatching = ['matching', 'shadow_match', 'card_match'].includes(type);
 
+    const handleTypeChange = (nextType: QuestionType) => {
+        setType(nextType);
+        if (nextType === 'true_false') {
+            setOptions(['Đúng', 'Sai']);
+            setCorrectIndex(-1);
+        } else if (type === 'true_false' && OPTION_TYPES.includes(nextType)) {
+            setOptions(['', '', '', '']);
+            setCorrectIndex(-1);
+        }
+    };
+
+    const isCorrectOptionMissing = hasOptions && !options[correctIndex]?.trim();
+
     const handleSave = () => {
+        if (isCorrectOptionMissing) return;
         const updated: Question = {
             ...question,
             content,
             type,
             difficulty,
-            correctAnswer,
+            // Lưu đúng nội dung lựa chọn để đáp án không lệch khi giáo viên sửa chữ trong lựa chọn
+            correctAnswer: hasOptions ? options[correctIndex] : correctAnswer,
             explanation: explanation || undefined,
-            options: hasOptions ? options : undefined,
+            options: hasOptions ? options.filter(o => o.trim()) : undefined,
             matchingPairs: hasMatching ? matchingPairs : undefined,
         };
         onSave(updated);
@@ -55,6 +80,7 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
     const removeOption = (index: number) => {
         if (options.length <= 2) return;
         setOptions(prev => prev.filter((_, i) => i !== index));
+        setCorrectIndex(prev => (prev === index ? -1 : prev > index ? prev - 1 : prev));
     };
 
     const addMatchingPair = () => setMatchingPairs(prev => [...prev, { left: '', right: '' }]);
@@ -98,7 +124,7 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                             <label className="block text-sm font-semibold text-slate-700 mb-2">Loại câu hỏi</label>
                             <select
                                 value={type}
-                                onChange={e => setType(e.target.value as QuestionType)}
+                                onChange={e => handleTypeChange(e.target.value as QuestionType)}
                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm bg-white"
                             >
                                 {Object.entries(QUESTION_TYPE_LABELS).map(([k, v]) => (
@@ -128,18 +154,27 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                     {/* Options */}
                     {hasOptions && (
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-2">Các lựa chọn đáp án</label>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1">Các lựa chọn đáp án</label>
+                            <p className="text-xs text-slate-500 mb-2">Bấm vào ô tròn bên trái để chọn đáp án đúng.</p>
                             <div className="space-y-2">
                                 {options.map((opt, i) => (
                                     <div key={i} className="flex items-center gap-2">
+                                        <input
+                                            type="radio"
+                                            name="correct-option"
+                                            checked={correctIndex === i}
+                                            onChange={() => setCorrectIndex(i)}
+                                            aria-label={`Chọn ${getOptionLabel(i)} là đáp án đúng`}
+                                            className="w-4 h-4 accent-teal-600 flex-shrink-0"
+                                        />
                                         <span className="w-7 h-7 rounded-lg bg-teal-100 text-teal-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                                            {String.fromCharCode(65 + i)}
+                                            {getOptionLabel(i)}
                                         </span>
                                         <input
                                             value={opt}
                                             onChange={e => updateOption(i, e.target.value)}
                                             className="flex-1 px-3 py-2 rounded-xl border border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm"
-                                            placeholder={`Lựa chọn ${String.fromCharCode(65 + i)}`}
+                                            placeholder={`Lựa chọn ${getOptionLabel(i)}`}
                                         />
                                         {options.length > 2 && (
                                             <button
@@ -207,15 +242,23 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                     )}
 
                     {/* Correct Answer */}
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Đáp án đúng</label>
-                        <input
-                            value={correctAnswer}
-                            onChange={e => setCorrectAnswer(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm"
-                            placeholder="Nhập đáp án đúng"
-                        />
-                    </div>
+                    {hasOptions ? (
+                        isCorrectOptionMissing && (
+                            <p role="alert" className="text-sm font-medium text-red-600">
+                                Chưa chọn đáp án đúng. Hãy bấm vào ô tròn cạnh một lựa chọn đã có nội dung.
+                            </p>
+                        )
+                    ) : (
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-2">Đáp án đúng</label>
+                            <input
+                                value={correctAnswer}
+                                onChange={e => setCorrectAnswer(e.target.value)}
+                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100 outline-none text-sm"
+                                placeholder="Nhập đáp án đúng"
+                            />
+                        </div>
+                    )}
 
                     {/* Explanation */}
                     <div>
@@ -240,7 +283,8 @@ export default function QuestionEditor({ question, onSave, onClose }: Props) {
                     </button>
                     <button
                         onClick={handleSave}
-                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                        disabled={isCorrectOptionMissing}
+                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Save className="w-4 h-4" />
                         Lưu thay đổi

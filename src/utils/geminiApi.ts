@@ -1,7 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
-import { QUESTION_TYPES_DATA } from '../types';
+import { QUESTION_TYPES_DATA, QUESTION_TYPE_LABELS, DIFFICULTY_LABELS } from '../types';
 import type { AiProvider, WorksheetGenerationRequest, Question, QuestionType, ContentMode } from '../types';
 import { getSettings, getActiveApiKey, getProvider } from './storage';
+import { normalizeQuestionAnswer } from './answerKey';
 
 export const GOOGLE_AI_API_KEY_PATTERN = /^(?:AIzaSy|AQ)\S{8,}$/;
 
@@ -312,8 +313,14 @@ Yêu cầu chung:
 - Độ khó: ${diffLabel}
 - Ngôn ngữ: ${request.language === 'en' ? 'English' : request.language === 'fr' ? 'Français' : 'Tiếng Việt (có dấu đầy đủ)'}
 - Mỗi câu hỏi phải rõ ràng, chính xác, phù hợp lứa tuổi
-- Với trắc nghiệm / đếm số / khoanh khác biệt / quy luật: 4 lựa chọn trong options, chỉ 1 đáp án đúng trong correctAnswer
-- Với điền khuyết: dùng dấu "___" cho chỗ trống
+- Với trắc nghiệm / đếm số / khoanh khác biệt / quy luật: có đúng 4 lựa chọn trong options và chỉ 1 đáp án đúng
+- QUY TẮC BẮT BUỘC VỀ ĐÁP ÁN:
+  + options chỉ chứa nội dung lựa chọn, KHÔNG thêm nhãn "A.", "B)", "1." ở đầu vì ứng dụng tự đánh nhãn A, B, C, D theo thứ tự trong mảng
+  + correctAnswer phải SAO CHÉP NGUYÊN VĂN một phần tử trong options, KHÔNG ghi chữ cái A/B/C/D hay số thứ tự vị trí
+  + Ví dụ: options ["12", "15", "18", "20"] có đáp án đúng 15 thì correctAnswer là "15"; options ["L", "M", "N", "Q"] có đáp án đúng điểm M thì correctAnswer là "M"; options ["Hà Nội", "Huế", "Đà Nẵng", "Cần Thơ"] có đáp án đúng Huế thì correctAnswer là "Huế" (không ghi "B")
+  + Trước khi trả về, hãy kiểm tra correctAnswer của từng câu có nằm trong options của câu đó và đúng về mặt kiến thức
+- Với đúng/sai: options là ["Đúng", "Sai"], correctAnswer là "Đúng" hoặc "Sai"
+- Với điền khuyết: dùng dấu "___" cho chỗ trống, correctAnswer chỉ gồm đúng từ/cụm/số cần điền; nếu có nhiều cách viết được chấp nhận thì ngăn cách bằng " | "
 - Với nối cột/ghép thẻ/nối bóng: tạo cặp nối tương ứng trong matchingPairs
 - Với tìm lỗi sai: nội dung câu hỏi chứa lỗi, correctAnswer là bản sửa đúng
 - Với tình huống: đưa tình huống thực tế, correctAnswer là phương án giải quyết
@@ -331,9 +338,9 @@ Trả về JSON THUẦN (không markdown, không code block) với format:
 [
   {
     "content": "nội dung câu hỏi",
-    "type": "${request.questionTypes[0]}",
-    "options": ["A", "B", "C", "D"],
-    "correctAnswer": "đáp án đúng",
+    "type": "mã dạng của câu này, là một trong: ${request.questionTypes.join(', ')}",
+    "options": ["nội dung lựa chọn 1", "nội dung lựa chọn 2", "nội dung lựa chọn 3", "nội dung lựa chọn 4"],
+    "correctAnswer": "nội dung lựa chọn 2",
     "explanation": "giải thích ngắn",
     "difficulty": "${request.difficulty}",
     "matchingPairs": [{"left": "...", "right": "..."}]
@@ -343,6 +350,24 @@ Trả về JSON THUẦN (không markdown, không code block) với format:
 Lưu ý: Chỉ trả về mảng JSON. 
 - Trường matchingPairs chỉ dùng cho loại: matching, shadow_match, card_match.
 - Trường options chỉ dùng cho loại: multiple_choice, true_false, counting, circle_odd, pattern_sequence.`;
+}
+
+const LATEX_COMMANDS_LIKE_JSON_ESCAPES = new Set([
+  'frac', 'forall', 'flat',
+  'beta', 'bar', 'begin', 'big', 'binom', 'bot', 'boxed', 'bullet', 'because',
+  'times', 'theta', 'tan', 'tau', 'to', 'text', 'therefore', 'triangle', 'tfrac', 'top', 'tilde',
+  'neq', 'ne', 'nu', 'not', 'notin', 'nabla', 'ni', 'nmid',
+  'rho', 'right', 'rightarrow', 'rangle', 'root',
+]);
+
+// AI hay viết LaTeX với một dấu "\": "\frac" bị JSON đọc thành ký tự form-feed + "rac", còn "\sqrt" làm JSON lỗi hẳn
+export function repairLatexEscapes(json: string): string {
+  return json.replace(/\\(["\\/]|[a-zA-Z]+|[\s\S])/g, (match, token: string) => {
+    if (token === '"' || token === '\\' || token === '/') return match;
+    const isJsonEscape = /^[bfnrtu]/.test(token);
+    if (isJsonEscape && !LATEX_COMMANDS_LIKE_JSON_ESCAPES.has(token)) return match;
+    return `\\${match}`;
+  });
 }
 
 function extractJsonArray(text: string): unknown[] | null {
@@ -379,6 +404,32 @@ function extractJsonArray(text: string): unknown[] | null {
   return null;
 }
 
+const OPTION_QUESTION_TYPES: QuestionType[] = ['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence', 'true_false'];
+
+export function parseGeneratedQuestions(
+  parsed: Record<string, unknown>[],
+  request: Pick<WorksheetGenerationRequest, 'questionTypes' | 'difficulty'>
+): Question[] {
+  return parsed.map((q, i) => {
+    const options = Array.isArray(q.options) ? (q.options as unknown[]).map(String) : undefined;
+    const rawType = String(q.type);
+    const fallbackType = (options && request.questionTypes.find(t => OPTION_QUESTION_TYPES.includes(t))) || request.questionTypes[0];
+    const rawDifficulty = String(q.difficulty);
+
+    return normalizeQuestionAnswer({
+      id: `q_${Date.now()}_${i}`,
+      content: String(q.content || ''),
+      type: rawType in QUESTION_TYPE_LABELS ? rawType as QuestionType : fallbackType,
+      options,
+      // Dùng ?? để đáp án là số 0 không bị mất
+      correctAnswer: String(q.correctAnswer ?? ''),
+      explanation: q.explanation ? String(q.explanation) : undefined,
+      difficulty: rawDifficulty in DIFFICULTY_LABELS ? rawDifficulty as Question['difficulty'] : request.difficulty,
+      matchingPairs: Array.isArray(q.matchingPairs) ? q.matchingPairs as { left: string; right: string }[] : undefined,
+    });
+  });
+}
+
 export async function generateWorksheetQuestions(
   request: WorksheetGenerationRequest
 ): Promise<Question[]> {
@@ -387,22 +438,13 @@ export async function generateWorksheetQuestions(
 
   if (!result) throw new Error('Không nhận được kết quả từ AI');
 
-  const parsed = extractJsonArray(result);
+  const parsed = extractJsonArray(repairLatexEscapes(result));
   if (!parsed || parsed.length === 0) {
     console.error('AI response cannot be parsed:', result.substring(0, 500));
     throw new Error('Không thể phân tích kết quả AI. Vui lòng thử lại!');
   }
 
-  return (parsed as Record<string, unknown>[]).map((q, i) => ({
-    id: `q_${Date.now()}_${i}`,
-    content: String(q.content || ''),
-    type: (q.type as QuestionType) || request.questionTypes[0],
-    options: Array.isArray(q.options) ? (q.options as unknown[]).map(String) : undefined,
-    correctAnswer: String(q.correctAnswer || ''),
-    explanation: q.explanation ? String(q.explanation) : undefined,
-    difficulty: (q.difficulty as Question['difficulty']) || request.difficulty,
-    matchingPairs: Array.isArray(q.matchingPairs) ? q.matchingPairs as { left: string; right: string }[] : undefined,
-  }));
+  return parseGeneratedQuestions(parsed as Record<string, unknown>[], request);
 }
 
 export async function analyzeContentForTypes(

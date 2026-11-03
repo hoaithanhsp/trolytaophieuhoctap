@@ -6,6 +6,15 @@ import {
 import type { Question, QuestionType, Difficulty, GradeLevel } from '../types';
 import { GRADE_LEVEL_LABELS, QUESTION_TYPE_LABELS, DIFFICULTY_LABELS } from '../types';
 import MathRenderer from '../components/MathRenderer';
+import {
+    formatCorrectAnswer,
+    getAnswerMode,
+    getCorrectOptionIndex,
+    getDisplayOptions,
+    getMatchingRightOrder,
+    getOptionLabel,
+    gradeQuestion,
+} from '../utils/answerKey';
 
 interface ShareData {
     t: string;
@@ -44,7 +53,7 @@ function decompressData(encoded: string): string {
 export default function OnlineWorksheet({ encodedData }: Props) {
     const [answers, setAnswers] = useState<Record<string, string>>({});
     const [submitted, setSubmitted] = useState(false);
-    const [startTime] = useState(Date.now());
+    const [startTime, setStartTime] = useState(Date.now());
     const [endTime, setEndTime] = useState<number | null>(null);
 
     const data = useMemo<ShareData | null>(() => {
@@ -70,25 +79,18 @@ export default function OnlineWorksheet({ encodedData }: Props) {
         }));
     }, [data]);
 
-    const autoGradable = (type: QuestionType) =>
-        ['multiple_choice', 'true_false', 'fill_blank', 'counting', 'circle_odd', 'pattern_sequence'].includes(type);
-
     const results = useMemo(() => {
         if (!submitted) return null;
         let correct = 0;
         let total = 0;
         const details = questions.map(q => {
-            const userAnswer = (answers[q.id] || '').trim();
-            const isGradable = autoGradable(q.type);
-            let isCorrect = false;
+            const userAnswer = getAnswerMode(q) === 'matching'
+                ? (q.matchingPairs ?? []).map((_, j) => answers[`${q.id}#${j}`] || '')
+                : answers[q.id] || '';
+            const { isGradable, isCorrect } = gradeQuestion(q, userAnswer);
 
             if (isGradable) {
                 total++;
-                if (q.type === 'fill_blank') {
-                    isCorrect = userAnswer.toLowerCase() === q.correctAnswer.toLowerCase();
-                } else {
-                    isCorrect = userAnswer === q.correctAnswer || userAnswer.startsWith(q.correctAnswer);
-                }
                 if (isCorrect) correct++;
             }
 
@@ -123,6 +125,7 @@ export default function OnlineWorksheet({ encodedData }: Props) {
     const handleReset = () => {
         setAnswers({});
         setSubmitted(false);
+        setStartTime(Date.now());
         setEndTime(null);
     };
 
@@ -191,6 +194,10 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                 <div className="space-y-4">
                     {questions.map((q, i) => {
                         const result = results?.details[i];
+                        const mode = getAnswerMode(q);
+                        const displayOptions = getDisplayOptions(q);
+                        const correctIndex = getCorrectOptionIndex(q);
+                        const rightColumn = getMatchingRightOrder(q).map(index => q.matchingPairs![index].right);
                         const borderClass = submitted
                             ? result?.isGradable
                                 ? result.isCorrect ? 'border-emerald-300' : 'border-red-300'
@@ -223,13 +230,13 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                 </div>
 
                                 {/* Multiple choice, counting, circle_odd, pattern_sequence */}
-                                {['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options && (
+                                {mode === 'options' && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {q.options.map((opt, j) => {
-                                            const label = String.fromCharCode(65 + j);
+                                        {displayOptions.map((opt, j) => {
+                                            const label = getOptionLabel(j);
                                             const isSelected = answers[q.id] === opt;
-                                            const isCorrectAnswer = submitted && (opt === q.correctAnswer || opt.startsWith(q.correctAnswer));
-                                            const isWrong = submitted && isSelected && !isCorrectAnswer;
+                                            const isCorrectAnswer = submitted && j === correctIndex;
+                                            const isWrong = submitted && !!result?.isGradable && isSelected && !isCorrectAnswer;
 
                                             return (
                                                 <button
@@ -251,12 +258,12 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                 )}
 
                                 {/* True/False */}
-                                {q.type === 'true_false' && q.options && (
+                                {mode === 'true_false' && (
                                     <div className="flex gap-3">
-                                        {q.options.map((opt, j) => {
+                                        {displayOptions.map((opt, j) => {
                                             const isSelected = answers[q.id] === opt;
-                                            const isCorrectAnswer = submitted && opt === q.correctAnswer;
-                                            const isWrong = submitted && isSelected && opt !== q.correctAnswer;
+                                            const isCorrectAnswer = submitted && j === correctIndex;
+                                            const isWrong = submitted && !!result?.isGradable && isSelected && !isCorrectAnswer;
 
                                             return (
                                                 <button
@@ -277,14 +284,14 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                 )}
 
                                 {/* Fill blank */}
-                                {q.type === 'fill_blank' && (
+                                {mode === 'fill' && (
                                     <input
                                         value={answers[q.id] || ''}
                                         onChange={e => !submitted && setAnswers(p => ({ ...p, [q.id]: e.target.value }))}
                                         disabled={submitted}
                                         placeholder="Nhập câu trả lời..."
                                         className={`w-full px-4 py-2.5 rounded-xl border text-sm outline-none transition-all ${submitted
-                                                ? answers[q.id]?.toLowerCase().trim() === q.correctAnswer.toLowerCase()
+                                                ? result?.isCorrect
                                                     ? 'border-emerald-300 bg-emerald-50'
                                                     : 'border-red-300 bg-red-50'
                                                 : 'border-slate-200 focus:border-teal-400 focus:ring-2 focus:ring-teal-100'
@@ -293,7 +300,7 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                 )}
 
                                 {/* Short answer / other types */}
-                                {!['multiple_choice', 'true_false', 'fill_blank', 'matching', 'shadow_match', 'card_match', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && (
+                                {mode === 'text' && (
                                     <textarea
                                         value={answers[q.id] || ''}
                                         onChange={e => !submitted && setAnswers(p => ({ ...p, [q.id]: e.target.value }))}
@@ -305,28 +312,59 @@ export default function OnlineWorksheet({ encodedData }: Props) {
                                 )}
 
                                 {/* Matching, shadow_match, card_match */}
-                                {['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs && (
+                                {mode === 'matching' && (
                                     <div className="space-y-2">
-                                        {q.matchingPairs.map((pair, j) => (
-                                            <div key={j} className="flex items-center gap-2">
-                                                <div className="px-3 py-2 rounded-xl bg-teal-50 text-teal-700 text-sm border border-teal-100 flex-1">
-                                                    {j + 1}. <MathRenderer content={pair.left} />
+                                        {q.matchingPairs!.map((pair, j) => {
+                                            const key = `${q.id}#${j}`;
+                                            const selectState = !submitted
+                                                ? 'border-slate-200 focus:border-teal-400'
+                                                : answers[key] === pair.right
+                                                    ? 'border-emerald-300 bg-emerald-50'
+                                                    : 'border-red-300 bg-red-50';
+
+                                            return (
+                                                <div key={j} className="flex items-center gap-2">
+                                                    <div className="px-3 py-2 rounded-xl bg-teal-50 text-teal-700 text-sm border border-teal-100 flex-1 min-w-0">
+                                                        {j + 1}. <MathRenderer content={pair.left} />
+                                                    </div>
+                                                    <span className="text-slate-300">→</span>
+                                                    <select
+                                                        value={answers[key] || ''}
+                                                        onChange={e => setAnswers(p => ({ ...p, [key]: e.target.value }))}
+                                                        disabled={submitted}
+                                                        aria-label={`Chọn nội dung nối với ${pair.left}`}
+                                                        className={`flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm bg-white outline-none transition-all ${selectState}`}
+                                                    >
+                                                        <option value="">Chọn...</option>
+                                                        {rightColumn.map((text, k) => (
+                                                            <option key={k} value={text}>{text}</option>
+                                                        ))}
+                                                    </select>
                                                 </div>
-                                                <span className="text-slate-300">→</span>
-                                                <div className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm border border-emerald-100 flex-1">
-                                                    {String.fromCharCode(97 + j)}. <MathRenderer content={pair.right} />
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
 
                                 {/* Show answer after submit */}
                                 {submitted && (
                                     <div className="mt-3 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
-                                        <p className="text-sm font-medium text-emerald-700">
-                                            Đáp án: <MathRenderer content={q.correctAnswer} />
-                                        </p>
+                                        {mode === 'matching' ? (
+                                            <div className="text-sm font-medium text-emerald-700">
+                                                <p>Đáp án:</p>
+                                                {q.matchingPairs!.map((pair, j) => (
+                                                    <p key={j}>{j + 1}. <MathRenderer content={pair.left} /> → <MathRenderer content={pair.right} /></p>
+                                                ))}
+                                            </div>
+                                        ) : (mode === 'options' || mode === 'true_false') && correctIndex === -1 ? (
+                                            <p className="text-sm font-medium text-amber-700">
+                                                Câu này chưa có đáp án hợp lệ nên không tính điểm. Hãy hỏi lại giáo viên.
+                                            </p>
+                                        ) : (
+                                            <p className="text-sm font-medium text-emerald-700">
+                                                Đáp án: <MathRenderer content={formatCorrectAnswer(q)} />
+                                            </p>
+                                        )}
                                         {q.explanation && (
                                             <p className="text-xs text-emerald-600/80 mt-1">
                                                 <MathRenderer content={q.explanation} />

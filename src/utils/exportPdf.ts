@@ -2,6 +2,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import type { Worksheet } from '../types';
 import { QUESTION_TYPE_LABELS, GRADE_LEVEL_LABELS, DIFFICULTY_LABELS } from '../types';
+import { getAnswerKeyText, getAnswerMode, getDisplayOptions, getMatchingLabel, getMatchingRightOrder, getOptionLabel } from './answerKey';
 
 export async function exportWorksheetToPdf(
   worksheet: Worksheet,
@@ -150,25 +151,27 @@ function buildWorksheetHtml(worksheet: Worksheet, includeAnswers: boolean): stri
     html += `<div style="${qLabelStyle}">[${escHtml(typeLabel)}] [${escHtml(diffLabel)}]</div>`;
     html += `<div style="${qContentStyle}">Câu ${i + 1}: ${escHtml(q.content)}</div>`;
 
-    if (['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(q.type) && q.options) {
-      q.options.forEach((opt, j) => {
-        const label = String.fromCharCode(65 + j);
+    if (getAnswerMode(q) === 'options') {
+      getDisplayOptions(q).forEach((opt, j) => {
+        const label = getOptionLabel(j);
         html += `<div style="${optionStyle}">${label}. ${escHtml(opt)}</div>`;
       });
     }
 
-    if (q.type === 'true_false' && q.options) {
-      html += `<div style="${optionStyle}">${q.options.map(o => escHtml(o)).join(' / ')}</div>`;
+    if (q.type === 'true_false') {
+      html += `<div style="${optionStyle}">${getDisplayOptions(q).map(o => escHtml(o)).join(' / ')}</div>`;
     }
 
-    if (['matching', 'shadow_match', 'card_match'].includes(q.type) && q.matchingPairs) {
+    if (getAnswerMode(q) === 'matching' && q.matchingPairs) {
+      const pairs = q.matchingPairs;
+      const rightOrder = getMatchingRightOrder(q);
       html += '<div style="padding-left:12px;margin-top:4px;">';
       html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
-      q.matchingPairs.forEach((pair, j) => {
+      pairs.forEach((pair, j) => {
         html += `<tr>
           <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${j + 1}. ${escHtml(pair.left)}</td>
-          <td style="padding:4px 8px;border:1px solid #e2e8f0;text-align:center;width:10%;">→</td>
-          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${String.fromCharCode(97 + j)}. ${escHtml(pair.right)}</td>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;text-align:center;width:10%;">......</td>
+          <td style="padding:4px 8px;border:1px solid #e2e8f0;width:45%;">${getMatchingLabel(j)}. ${escHtml(pairs[rightOrder[j]].right)}</td>
         </tr>`;
       });
       html += '</table></div>';
@@ -210,7 +213,7 @@ function buildAnswerKeyHtml(worksheet: Worksheet): string {
 
   worksheet.answerKey.forEach(ak => {
     html += `<div style="${answerRowStyle}">`;
-    html += `<div style="${answerTextStyle}">Câu ${ak.questionIndex}: ${escHtml(ak.answer)}</div>`;
+    html += `<div style="${answerTextStyle}">Câu ${ak.questionIndex}: ${escHtml(getAnswerKeyText(worksheet, ak))}</div>`;
     if (ak.explanation) {
       html += `<div style="${explanationStyle}">→ ${escHtml(ak.explanation)}</div>`;
     }

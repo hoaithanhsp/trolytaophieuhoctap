@@ -1,7 +1,17 @@
-import { Trash2, Edit3, GripVertical } from 'lucide-react';
+import { Trash2, Edit3, GripVertical, AlertTriangle } from 'lucide-react';
 import type { Question } from '../types';
 import { QUESTION_TYPE_LABELS, DIFFICULTY_LABELS } from '../types';
 import MathRenderer from './MathRenderer';
+import {
+  formatCorrectAnswer,
+  getAnswerMode,
+  getCorrectOptionIndex,
+  getDisplayOptions,
+  getMatchingLabel,
+  getMatchingRightOrder,
+  getOptionLabel,
+  hasUnresolvedAnswer,
+} from '../utils/answerKey';
 
 interface Props {
   question: Question;
@@ -18,6 +28,9 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
     medium: 'bg-amber-50 text-amber-700',
     hard: 'bg-red-50 text-red-700',
   };
+  const mode = getAnswerMode(question);
+  const displayOptions = getDisplayOptions(question);
+  const correctIndex = getCorrectOptionIndex(question);
 
   return (
     <div className="group bg-white rounded-2xl border border-slate-200/60 p-5 hover:shadow-lg hover:shadow-teal-100/50 transition-all duration-300">
@@ -46,11 +59,11 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
           </div>
 
           {/* Options for multiple_choice, counting, circle_odd, pattern_sequence */}
-          {['multiple_choice', 'counting', 'circle_odd', 'pattern_sequence'].includes(question.type) && question.options && (
+          {(mode === 'options' || mode === 'true_false') && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {question.options.map((opt, i) => {
-                const label = String.fromCharCode(65 + i);
-                const isCorrect = showAnswer && (opt === question.correctAnswer || opt.startsWith(question.correctAnswer));
+              {displayOptions.map((opt, i) => {
+                const label = getOptionLabel(i);
+                const isCorrect = showAnswer && i === correctIndex;
                 return (
                   <div
                     key={i}
@@ -84,9 +97,9 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   {question.type === 'shadow_match' ? 'Bóng / Ghép đôi' : 'Cột B'}
                 </p>
-                {question.matchingPairs.map((pair, i) => (
+                {getMatchingRightOrder(question).map((pairIndex, i) => (
                   <div key={i} className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-sm border border-emerald-100">
-                    {String.fromCharCode(97 + i)}. <MathRenderer content={pair.right} />
+                    {getMatchingLabel(i)}. <MathRenderer content={question.matchingPairs![pairIndex].right} />
                   </div>
                 ))}
               </div>
@@ -122,10 +135,17 @@ export default function QuestionCard({ question, index, onEdit, onDelete, showAc
             </div>
           )}
 
+          {showActions && hasUnresolvedAnswer(question) && (
+            <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>Chưa xác định được đáp án đúng{question.correctAnswer ? ` (AI ghi "${question.correctAnswer}")` : ""}. Hãy bấm sửa câu này và chọn đáp án đúng, nếu không câu này sẽ không được tính điểm.</span>
+            </div>
+          )}
+
           {showAnswer && (
             <div className="mt-3 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
               <p className="text-sm font-medium text-emerald-700">
-                Đáp án: <MathRenderer content={question.correctAnswer} />
+                Đáp án: <MathRenderer content={formatCorrectAnswer(question)} />
               </p>
               {question.explanation && (
                 <p className="text-xs text-emerald-600/80 mt-1">

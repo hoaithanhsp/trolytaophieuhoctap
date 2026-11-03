@@ -11,6 +11,7 @@ import MathRenderer from '../components/MathRenderer';
 import { exportWorksheetToWord } from '../utils/exportWord';
 import { exportWorksheetToHtml } from '../utils/exportHtml';
 import { deleteWorksheet } from '../utils/storage';
+import { getAnswerKeyText } from '../utils/answerKey';
 import ShareModal from '../components/ShareModal';
 
 interface Props {
@@ -183,7 +184,7 @@ export default function WorksheetViewer({ worksheet, onBack, onDeleted }: Props)
                 </span>
                 <div>
                   <p className="text-sm font-medium text-emerald-800">
-                    <MathRenderer content={ak.answer} />
+                    <MathRenderer content={getAnswerKeyText(worksheet, ak)} />
                   </p>
                   {ak.explanation && (
                     <p className="text-xs text-emerald-600/70 mt-0.5">
