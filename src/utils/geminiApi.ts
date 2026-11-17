@@ -39,12 +39,13 @@ export const createGoogleAiClient = (apiKey: string, provider: AiProvider): Goog
   return new GoogleGenAI({ apiKey: trimmedKey });
 };
 
+const GEMINI_FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+const AGENT_PLATFORM_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const GEMINI_3_MODELS = new Set(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);
+
 export function getFallbackModels(provider: AiProvider, selectedModel?: string): string[] {
   const trimmed = selectedModel?.trim();
-  const baseList = provider === 'agent-platform'
-    ? ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
-    : ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
-
+  const baseList = provider === 'agent-platform' ? AGENT_PLATFORM_FALLBACK_MODELS : GEMINI_FALLBACK_MODELS;
   const candidates = trimmed ? [trimmed, ...baseList] : baseList;
   return Array.from(new Set(candidates.filter(Boolean)));
 }
@@ -173,6 +174,13 @@ export async function callGoogleAiWithFallback({
       if (forceJson) {
         config.responseMimeType = 'application/json';
       }
+      if (GEMINI_3_MODELS.has(model)) {
+        config.thinkingConfig = { thinkingLevel: 'low' };
+      } else {
+        config.temperature = 0.2;
+        config.topP = 0.95;
+        config.topK = 40;
+      }
 
       const response = await ai.models.generateContent({
         model,
@@ -197,6 +205,9 @@ export async function callGoogleAiWithFallback({
       }
       if (provider === 'gemini' && errorType === 'PERMISSION_DENIED') {
         throw new Error(getFriendlyErrorMessage('PERMISSION_DENIED', 'gemini', status));
+      }
+      if (errorType !== 'MODEL_OVERLOADED' && errorType !== 'MODEL_UNAVAILABLE' && status !== 502 && status !== 503 && status !== 504) {
+        throw new Error(getFriendlyErrorMessage(errorType, provider, status));
       }
 
       lastError = error instanceof Error ? error : new Error(getFriendlyErrorMessage(errorType, provider, status));

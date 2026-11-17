@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Eye, EyeOff, Key, ExternalLink, CheckCircle, Cpu, Server } from 'lucide-react';
 import { GEMINI_MODELS, AGENT_PLATFORM_MODELS } from '../types';
 import type { AppSettings, AiProvider } from '../types';
-import { getSettings, saveSettings } from '../utils/storage';
+import { getSettings, saveSettings, getProvider } from '../utils/storage';
 import { isValidGoogleAiApiKey, testGoogleAiConnection } from '../utils/geminiApi';
 
 interface Props {
@@ -24,7 +24,7 @@ export default function ApiKeyModal({ isOpen, onClose, onSave }: Props) {
     if (isOpen) {
       const s = getSettings();
       setLocalSettings(s);
-      const prov: AiProvider = s.google_ai_provider === 'agent-platform' ? 'agent-platform' : 'gemini';
+      const prov: AiProvider = getProvider(s);
       setActiveProvider(prov);
       setGeminiKey(s.gemini_api_key || s.geminiApiKey || '');
       setAgentPlatformKey(s.agent_platform_api_key || '');
